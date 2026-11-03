@@ -67,7 +67,9 @@ def need_key():
 
 
 async def session(uid):
-    return await sb.get_session(uid, db)
+    s = await sb.get_session(uid, db)
+    s.touch()
+    return s
 
 
 async def active_run(uid):
@@ -140,22 +142,21 @@ async def browser_input(body: InputIn, uid: str = Depends(uid_of)):
     s = await session(uid)
     await take_over(uid, s)
     page = await s.ensure_page()
+    if s.pending_dialog:
+        raise HTTPException(409, "Answer the page dialog first")
+    acts = {
+        "click": lambda: page.mouse.click(body.x, body.y),
+        "dblclick": lambda: page.mouse.dblclick(body.x, body.y),
+        "type": lambda: page.keyboard.type(body.text or ""),
+        "key": lambda: page.keyboard.press(body.key),
+        "scroll": lambda: page.mouse.wheel(0, body.dy or 0),
+    }
+    if body.kind not in acts:
+        raise HTTPException(400, "Unknown input")
     try:
-        if body.kind == "click":
-            await page.mouse.click(body.x, body.y)
-        elif body.kind == "dblclick":
-            await page.mouse.dblclick(body.x, body.y)
-        elif body.kind == "type":
-            await page.keyboard.type(body.text or "")
-        elif body.kind == "key":
-            await page.keyboard.press(body.key)
-        elif body.kind == "scroll":
+        if body.kind == "scroll":
             await page.mouse.move(body.x or 640, body.y or 400)
-            await page.mouse.wheel(0, body.dy or 0)
-        else:
-            raise HTTPException(400, "Unknown input")
-    except HTTPException:
-        raise
+        await s.run_guarded(acts[body.kind](), timeout=15)
     except Exception as e:
         raise HTTPException(409, f"Browser busy: {str(e)[:200]}")
     return {"ok": True}
@@ -304,7 +305,7 @@ async def skills_update(sid: str, body: SkillIn, uid: str = Depends(uid_of)):
     r = await db.skills.update_one({"id": sid, "user_id": uid}, {"$set": {**data, "updated_at": sb.now_iso()}})
     if not r.matched_count:
         raise HTTPException(404, "Not found")
-    return await db.skills.find_one({"id": sid}, {"_id": 0, "events": 0})
+    return await db.skills.find_one({"id": sid, "user_id": uid}, {"_id": 0, "events": 0})
 
 
 @api.delete("/skills/{sid}")
@@ -363,6 +364,7 @@ async def runs_create(body: RunIn, uid: str = Depends(uid_of)):
            "step_count": 0, "summary": "", "created_at": now, "updated_at": now}
     await db.runs.insert_one(run)
     run.pop("_id", None)
+    s.events.clear()
     engine.start(run["id"], uid)
     return run
 
@@ -400,8 +402,11 @@ async def runs_approval(rid: str, body: ApprovalIn, uid: str = Depends(uid_of)):
         raise HTTPException(400, "Nothing to approve")
     pend = run["pending"]
     if body.decision == "reject":
-        msg = f'User REJECTED the action {pend["tool"]}({pend["args"]}) — do not do it; find another way or finish.'
-        await db.runs.update_one({"id": rid}, {"$set": {"status": "running", "pending": None}, "$push": {"messages": msg}})
+        msg = (f'User REFUSED the outcome of {pend["tool"]}({pend["args"]}) (risk: {pend["risk"]}). Do NOT achieve this outcome by any other '
+               f'means (no other button, key, URL or form). Any further "{pend["risk"]}" action is blocked for this run. Continue only with parts '
+               f'of the goal that do not need it, otherwise finish or ask_user.')
+        await db.runs.update_one({"id": rid}, {"$set": {"status": "running", "pending": None},
+                                               "$push": {"messages": msg}, "$addToSet": {"blocked_risks": pend["risk"]}})
     else:
         if body.decision in ("always", "always_skill"):
             skill_id = run.get("skill_id") if body.decision == "always_skill" else None
@@ -446,8 +451,9 @@ async def runs_resume(rid: str, uid: str = Depends(uid_of)):
     if run["status"] not in ("paused", "failed", "stopped"):
         raise HTTPException(400, "Cannot resume")
     s = await session(uid)
-    corr = [e["desc"] for e in (s.correction_sink or []) if e.get("kind") != "navigate" or True]
+    corr = [e["desc"] for e in (s.correction_sink or [])]
     s.correction_sink = None
+    s.events.clear()
     upd = {"$set": {"status": "running", "pending": None}}
     if corr:
         upd["$push"] = {"corrections": {"$each": corr[-60:]}}
@@ -575,7 +581,7 @@ async def files_delete(fid: str, uid: str = Depends(uid_of)):
     f, p = await get_file(fid, uid)
     with suppress(FileNotFoundError):
         p.unlink()
-    await db.files.delete_one({"id": fid})
+    await db.files.delete_one({"id": fid, "user_id": uid})
     return {"ok": True}
 
 
@@ -609,6 +615,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 @app.on_event("startup")
 async def startup():
     app.state.index_task = asyncio.create_task(ensure_indexes())
+    app.state.reaper = asyncio.create_task(sb.reap_idle(db, ACTIVE))
     await db.runs.update_many({"status": "running"}, {"$set": {"status": "paused", "summary": "Interrupted by a restart — press Resume to continue from the last step."}})
 
 

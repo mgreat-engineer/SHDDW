@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 import os
 import re
 import uuid
@@ -122,6 +123,25 @@ class BrowserSession:
         self.events = []
         self.last_frame = None
         self.closed = False
+        self.last_used = time.time()
+
+    def touch(self):
+        self.last_used = time.time()
+
+    async def run_guarded(self, coro, timeout=30):
+        """Run a browser action; return early (success) if it opened a JS dialog that now blocks it."""
+        before = self.pending_dialog
+        task = asyncio.ensure_future(coro)
+        end = time.time() + timeout
+        while time.time() < end:
+            if task.done():
+                return task.result()
+            if self.pending_dialog and self.pending_dialog is not before:
+                task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                return f'Action opened a {self.pending_dialog.type} dialog: "{self.pending_dialog.message}"'
+            await asyncio.sleep(0.2)
+        task.cancel()
+        raise TimeoutError(f"Action did not finish within {timeout}s")
 
     async def start(self):
         pw = await get_playwright()
@@ -181,6 +201,11 @@ class BrowserSession:
         page.on("download", self._on_download)
         page.on("filechooser", self._on_chooser)
         page.on("framenavigated", lambda fr, p=page: self._on_nav(p, fr))
+        page.on("close", self._on_page_close)
+
+    def _on_page_close(self, _page):
+        self.pending_dialog = None
+        self.pending_chooser = None
 
     def _on_page(self, page):
         self._wire(page)
@@ -188,6 +213,9 @@ class BrowserSession:
         self.push_event(f"Opened new tab {page.url}")
 
     def _on_nav(self, page, frame):
+        if frame == page.main_frame:
+            self.pending_dialog = None
+            self.pending_chooser = None
         if frame == page.main_frame and frame.url not in ("about:blank", ""):
             self.capture({"kind": "navigate", "url": frame.url})
 
@@ -303,10 +331,13 @@ class BrowserSession:
         dlg, self.pending_dialog = self.pending_dialog, None
         if not dlg:
             raise ValueError("No dialog is open")
-        if accept:
-            await dlg.accept(text) if (dlg.type == "prompt" and text) else await dlg.accept()
-        else:
-            await dlg.dismiss()
+        try:
+            if accept:
+                await dlg.accept(text) if (dlg.type == "prompt" and text) else await dlg.accept()
+            else:
+                await dlg.dismiss()
+        except Exception as e:
+            raise ValueError(f"The dialog is no longer open ({str(e)[:80]})")
         self.capture({"kind": "browser", "text": f'{"Accepted" if accept else "Dismissed"} dialog "{dlg.message}"' + (f' with "{text}"' if text else "")})
 
     async def upload(self, names: list, element_id=None):
@@ -356,6 +387,21 @@ async def get_session(user_id: str, db) -> BrowserSession:
         await s.start()
         _sessions[user_id] = s
         return s
+
+
+async def reap_idle(db, active_statuses, idle_secs=1800):
+    while True:
+        await asyncio.sleep(120)
+        for uid, s in list(_sessions.items()):
+            if time.time() - s.last_used < idle_secs:
+                continue
+            if await db.runs.find_one({"user_id": uid, "status": {"$in": active_statuses}}):
+                continue
+            _sessions.pop(uid, None)
+            try:
+                await s.ctx.close()
+            except Exception:
+                pass
 
 
 async def close_all():

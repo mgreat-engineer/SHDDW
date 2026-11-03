@@ -26,6 +26,7 @@ export default function Workspace() {
   const [recorded, setRecorded] = useState(null);
   const [refresh, setRefresh] = useState(0);
   const lastStatus = useRef({});
+  const lastActive = useRef(null);
 
   const bump = () => setRefresh((n) => n + 1);
 
@@ -34,9 +35,11 @@ export default function Workspace() {
   const pollActive = useCallback(async () => {
     try {
       const r = await api.get("/runs/active");
-      if (r.data.run && r.data.run.id !== runId) setRunId(r.data.run.id);
+      const id = r.data.run?.id || null;
+      if (id && id !== lastActive.current) setRunId(id);
+      lastActive.current = id;
     } catch {}
-  }, [api, runId]);
+  }, [api]);
 
   const pollRun = useCallback(async () => {
     if (!runId) return;

@@ -8,7 +8,7 @@ const S = {
   stopped: ["Stopped", "text-slate-400 border-[#262B3D] bg-white/5"],
 };
 
-export default function StatusBadge({ status }) {
+export default function StatusBadge({ status, testId = "run-status-badge" }) {
   const [t, c] = S[status] || [status, "text-slate-400 border-[#262B3D]"];
-  return <span data-testid="run-status-badge" className={`shrink-0 text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full border ${c}`}>{t}</span>;
+  return <span data-testid={testId} className={`shrink-0 text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full border ${c}`}>{t}</span>;
 }

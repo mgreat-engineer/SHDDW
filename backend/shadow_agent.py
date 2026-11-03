@@ -353,22 +353,31 @@ Call exactly one tool."""
                         continue
                     reason = args.pop("reason", "")
                     risk = args.pop("risk", "none")
+                    if risk in run.get("blocked_risks", []):
+                        await self._step(run, sess, name, args, reason, f"BLOCKED: the user refused '{risk}' actions in this run. Do not try again.", False)
+                        continue
                     if risk in RISKS and not await self._permitted(user_id, risk, run.get("skill_id")):
                         await self._set(run_id, status="awaiting_approval", pending={
                             "tool": name, "args": args, "reason": reason, "risk": risk, "url": sess.page().url})
                         return
                 if name == "finish":
                     await self._step(run, sess, name, args, reason, args.get("summary", ""))
-                    await self._set(run_id, status="completed" if args.get("success", True) else "failed", summary=args.get("summary", ""))
+                    ok_done = args.get("success", True)
+                    plan = [{**p, "status": "done"} if ok_done and p.get("status") in ("todo", "active") else p for p in run.get("plan", [])]
+                    await self._set(run_id, status="completed" if ok_done else "failed", summary=args.get("summary", ""), plan=plan)
                     await self._after_finish(run)
                     return
                 if name == "ask_user":
                     await self._step(run, sess, name, args, reason, "Waiting for your reply")
                     await self._set(run_id, status="waiting_input", pending={"question": args.get("question", "")})
                     return
+                sess.touch()
                 try:
-                    result = await self._execute(run, sess, name, args)
-                    ok = True
+                    if name == "handle_dialog" or not sess.pending_dialog:
+                        result = await sess.run_guarded(self._execute(run, sess, name, args), timeout=90)
+                    else:
+                        result = "ERROR: a dialog is open — call handle_dialog first"
+                    ok = not str(result).startswith("ERROR")
                 except Exception as e:
                     result, ok = f"ERROR: {str(e)[:400]}", False
                 await self._step(run, sess, name, args, reason, result, ok)

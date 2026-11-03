@@ -1,0 +1,49 @@
+{
+  "summary": "First full E2E pass of Shadow (Clerk auth, live headless Chrome, Watch-me→GPT skill, agent runs, approvals, pause/resume/stop, memory/files/permissions/history, page dialogs, file chooser, voice, data isolation). Backend pytest: 20/20 pass (3 real GPT runs). UI: every requested flow works end to end. Found 1 HIGH agent-safety issue (Reject leads the agent to work around the veto) and several medium/minor robustness issues around dialogs and stale events.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/runs/{id}/approval (decision=reject) + shadow_agent loop", "issue": "After the user REJECTED click(Submit order) on httpbin, the agent's next step was press_key Enter, reasoning 'pressing Enter can submit without clicking the rejected button'. The reject message in server.py:403 says '...do not do it; find another way or finish', which pushes the agent to get round the veto. A second approval was asked only because the agent tagged Enter as risk=send. Fix: reword it to say the user refused this outcome, so the agent must not send/submit by any other means and should finish or ask_user. Consider auto-blocking the same risk category for the rest of the run after a reject.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/browser/dialog", "issue": "Returns 500 'Dialog.accept: Protocol error ... No dialog is showing' when pending_dialog is stale (the page navigated or the dialog closed elsewhere). shadow_browser.resolve_dialog only raises ValueError for None; catch the Playwright Error and return 400. Also clear pending_dialog on main-frame navigation or page close: GET /browser/state kept reporting a confirm dialog after the page had navigated away."},
+      {"endpoint": "shadow_agent._prompt / BrowserSession.events", "issue": "sess.events collects events from manual browsing (e.g. 'Dialog appeared (confirm)') and is only cleared inside _prompt. The first prompt of a new run therefore shows stale events as 'BROWSER EVENTS SINCE LAST STEP'. Reproduced: a Wikipedia run's step #1 was handle_dialog -> 'ERROR: No dialog is open'. Clear sess.events when a run starts or resumes."},
+      {"endpoint": "shadow_agent._execute click / click_at while a JS dialog opens", "issue": "Agent click on a button that opens confirm(): Playwright locator.click blocks until the dialog closes, so after 6s the step is recorded ok=false 'Locator.click: Timeout 6000ms exceeded' although the click worked (the agent then recovered). click_at uses page.mouse.click with NO timeout, so it would likely hang forever and deadlock the run loop, which could then never call handle_dialog. Wrap the click in asyncio.wait_for, or treat a pending dialog as success."},
+      {"endpoint": "POST /api/browser/input", "issue": "A click that opens a JS dialog blocks the HTTP request until the dialog is resolved. The UI still works (state polling is separate), but every later input queued in BrowserView waits behind it."},
+      {"endpoint": "POST /api/runs/{id}/resume", "issue": "Dead code: `if e.get('kind') != 'navigate' or True` always evaluates True."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Workspace pollActive / HistoryPanel", "issue": "While any run is active (running/paused/awaiting/waiting_input), clicking a history item gets overridden within 1.5s: pollActive resets runId to the active run whenever they differ, so past runs can't be viewed during an active task.", "selector": "[data-testid^=history-item-]", "priority": "LOW"},
+      {"component": "StatusBadge", "issue": "The same data-testid='run-status-badge' is used in every History item and in the Activity panel, so the selector is ambiguous (the first match is a history item). Give history badges a distinct testid such as history-status-badge-<id>.", "selector": "[data-testid=run-status-badge]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Workspace top-right", "issues": ["Sonner toasts ('Shadow needs your OK', 'Task finished') sit on top of the Activity panel header and hide run-goal and run-status-badge for several seconds; consider bottom-right placement or an offset."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_shadow_api.py", "/app/backend/tests/agent_dialog_probe.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "HIGH: Change the approval 'reject' message so the agent does not try another way to reach the same risky outcome (server.py runs_approval); optionally block that risk category for the rest of the run after a reject",
+    "Catch the Playwright Error in resolve_dialog -> 400 (no more 500), and clear pending_dialog/pending_chooser on navigation or page close",
+    "Clear sess.events when a run is created or resumed so stale manual-browsing events don't mislead the agent",
+    "Make agent click/click_at robust when a click opens a dialog (asyncio.wait_for plus a pending-dialog check) to prevent a deadlock with click_at",
+    "Let history selection override pollActive (e.g. only auto-switch when the user hasn't picked a run, or when the active run id changes)",
+    "Use a unique testid for history status badges; move toasts so they don't cover the Activity header"
+  ],
+  "critical_code_review_comments": [
+    "server.py files_delete: delete_one({'id': fid}) has no user_id filter; it's safe only because get_file checks ownership first. Add user_id for defence in depth.",
+    "server.py skills_update: the final find_one has no user_id filter (safe after the matched_count check, but inconsistent).",
+    "shadow_browser.BrowserSession: one persistent Chrome per user with no idle reaping or limit, so memory grows with every user who signs in. Add idle shutdown.",
+    "Backend restart: in-memory sessions are lost; startup marks running runs as paused (good), but pending dialog/chooser state is lost silently.",
+    "runs_get returns run_steps filtered by run_id only (fine after the ownership check)."
+  ],
+  "updated_files": ["/app/backend/tests/test_shadow_api.py", "/app/backend/tests/agent_dialog_probe.py"],
+  "success_rate": {"backend": "100% (20/20 pytest), plus 4 minor robustness issues and 1 HIGH agent-safety issue", "frontend": "~95%: all requested flows pass; 2 low UI bugs and 1 design issue"},
+  "test_credentials": "shadow.a+clerk_test@example.com (primary) and shadow.b+clerk_test@example.com (isolation) from /app/memory/test_credentials.md; tokens and tickets via /app/tests/clerk_token.py",
+  "seed_data_creation": "No seed data. TEST_ memories, files, skills and permissions were created and deleted by id. Runs created by tests remain in history (no delete endpoint). The user's original manual 'send' permission (id d959d03d...) was revoked as instructed; 'Always allow' during the approval test re-created one global 'send' permission (id f70164c3..., source=approval), so the state is equivalent.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the backend suite serially: `pytest /app/backend/tests/test_shadow_api.py -n 0 -v` (TestRuns uses GPT, ~1 min; use -k 'not TestRuns' to skip it). It deletes the 'send' permission and re-creates it via 'always'. UI sign-in: generate a new ticket for every browser session (they're single-use). Frame click mapping: example.com 'Learn more' is at about (0.5w, 0.963h) of browser-frame-image. Data URLs work for dialog and file-chooser tests. /browser/input click blocks while a dialog is open, so fire it in a thread. During this session the whole container restarted once (502 from Cloudflare for ~1 min); this was not caused by tests.",
+  "rca of the issue": "Reject bypass: runs_approval pushes the message 'User REJECTED the action X — do not do it; find another way or finish.' GPT reads 'find another way' as 'reach the same goal by another action' and picked press_key Enter on the same form. Stale dialog in the agent: BrowserSession.push_event appends to self.events during manual use; RunEngine._prompt prints sess.events[-8:] as 'since last step' and clears them only afterwards, so the first step of a new run sees old dialog events. Dialog 500: resolve_dialog sets pending_dialog=None and calls dlg.accept() on a dialog Chrome no longer shows; the Playwright Error isn't a ValueError, so it surfaces as 500."
+}

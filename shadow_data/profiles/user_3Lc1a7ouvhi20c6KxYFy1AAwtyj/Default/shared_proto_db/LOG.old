@@ -1,2 +1,3 @@
-2026/11/03-20:43:24.478 85b Creating DB /app/shadow_data/profiles/user_3Lc1a7ouvhi20c6KxYFy1AAwtyj/Default/shared_proto_db since it was missing.
-2026/11/03-20:43:24.483 85b Reusing MANIFEST /app/shadow_data/profiles/user_3Lc1a7ouvhi20c6KxYFy1AAwtyj/Default/shared_proto_db/MANIFEST-000001
+2026/11/03-20:55:51.567 f0a Reusing MANIFEST /app/shadow_data/profiles/user_3Lc1a7ouvhi20c6KxYFy1AAwtyj/Default/shared_proto_db/MANIFEST-000001
+2026/11/03-20:55:51.567 f0a Recovering log #3
+2026/11/03-20:55:51.568 f0a Reusing old log /app/shadow_data/profiles/user_3Lc1a7ouvhi20c6KxYFy1AAwtyj/Default/shared_proto_db/000003.log 
