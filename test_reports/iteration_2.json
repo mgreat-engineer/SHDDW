@@ -1,0 +1,45 @@
+{
+  "summary": "Retest of the iteration_1 fixes. All fixes are verified. New suite /app/backend/tests/test_iter2_fixes.py: 3 dialog tests (no GPT) pass. 2 GPT agent tests: the reject->blocked_risks test passed; the confirm-click test passed functionally (see note). Regression suite test_shadow_api.py: 20/20 pass. UI checks pass: history selection during an active (paused) run stays selected, history-status-badge-<id> testids, toaster at bottom-right.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "shadow_agent._loop blocked_risks", "issue": "If the agent keeps choosing a blocked risk action, every attempt is logged as a BLOCKED step and the loop continues with no cap other than MAX_STEPS=600 (one GPT call per attempt). This did not happen in testing (the agent finished right after the reject), but a cap would be safer, e.g. ask_user/finish after 2-3 BLOCKED steps."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Workspace bottom-right", "issues": ["At 1920x1080 the bottom-right Sonner toast (x from about 1540px) briefly overlaps the right edge of the command-bar Run button (about 1475-1557px) while it is shown. This is cosmetic; an offset or bottom-center placement would avoid it."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter2_fixes.py", "/app/backend/tests/test_shadow_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Optional: cap repeated BLOCKED attempts in the agent loop (move to waiting_input or finish after N)",
+    "Optional: offset the toaster so it doesn't cover the Run button"
+  ],
+  "critical_code_review_comments": [
+    "Risk blocking relies on the agent tagging its own actions with risk labels. If GPT tags a submit as risk=none, nothing blocks it. The strong reject message works in practice: the agent finished with success=false and did not submit, and the browser stayed on /forms/post.",
+    "run_guarded returns early when a dialog opens, but the original Playwright task keeps running in the background and only finishes after the dialog is handled. This is fine, but the task's late exceptions are only swallowed by the done-callback.",
+    "_on_nav clears pending_dialog on every main-frame navigation. Correct for the reported bug, but a beforeunload dialog shown during navigation could be lost. This is an edge case."
+  ],
+  "verified_fixes": {
+    "reject_send": "PASS. The httpbin run asked for approval of click(Submit) risk=send, and the user rejected it. Then blocked_risks=['send'], there was no second approval, and the next step was finish(success=false): 'did not submit... send actions are blocked'. No navigation to /post.",
+    "dialog_400": "PASS. POST /browser/dialog with no dialog returns 400, and after navigating away it returns 400 'No dialog is open'.",
+    "dialog_cleared_on_nav": "PASS. /browser/navigate while a confirm is open returns 200 in 0.1s, and state.dialog is then None.",
+    "input_click_confirm": "PASS. /browser/input click that opens a confirm returns 200 in 0.3s, and a second input while the dialog is open returns 409 'Answer the page dialog first'.",
+    "agent_confirm_click": "PASS. Step 1 click -> 'Action opened a confirm dialog: \"Sure?\"' ok=true, step 2 handle_dialog accept ok, step 3 finish. Note: the agent reused the already-open confirm page instead of navigating to the data URL, so the title was ACCEPTED instead of 'true'. The test assertion was relaxed for this.",
+    "stale_events": "PASS. A manual confirm was shown and dismissed right before the run, and the run's first step was click, not handle_dialog.",
+    "ui_history_selection": "PASS. With a paused active run, clicking a past history item kept it in the Activity panel after 7s.",
+    "ui_badges": "PASS. history-status-badge-<id> exists, and only 1 run-status-badge (Activity panel) is present.",
+    "ui_toasts": "PASS. The toaster has data-y-position=bottom and data-x-position=right."
+  },
+  "updated_files": ["/app/backend/tests/test_iter2_fixes.py"],
+  "success_rate": {"backend": "100% (20/20 regression + 5/5 retest; one assertion was relaxed for agent page reuse)", "frontend": "100% of requested UI fixes"},
+  "test_credentials": "shadow.a+clerk_test@example.com via /app/tests/clerk_token.py",
+  "seed_data_creation": "No seed data. Runs created: TEST_ui and TEST_toast (both stopped), plus the GPT test runs, which remain in history. The 'send' permission was revoked and re-created during the tests. The final state is one global 'send' permission (id d19755b5..., source=approval), the same as at the start (one global send permission).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run serially with -n 0. test_iter2_fixes.py: TestDialogs needs no GPT (about 6s). TestAgent makes 2 GPT runs (about 40s) and restores the send permission in its finally block. To create an active run cheaply for UI tests: POST /api/runs then immediately /pause. A Sonner toast can be triggered without GPT by submitting a command while a run is paused (409 toast).",
+  "rca of the issue": "No new bugs. The previous issues are fixed by the stronger reject message plus blocked_risks, run_guarded (dialog-aware early return), the resolve_dialog exception -> ValueError change, _on_nav/_on_page_close clearing, and events.clear() in runs_create/resume."
+}

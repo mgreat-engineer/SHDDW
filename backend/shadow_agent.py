@@ -354,7 +354,12 @@ Call exactly one tool."""
                     reason = args.pop("reason", "")
                     risk = args.pop("risk", "none")
                     if risk in run.get("blocked_risks", []):
+                        blocked = run.get("blocked_count", 0) + 1
                         await self._step(run, sess, name, args, reason, f"BLOCKED: the user refused '{risk}' actions in this run. Do not try again.", False)
+                        await self._set(run_id, blocked_count=blocked)
+                        if blocked >= 3:
+                            await self._set(run_id, status="waiting_input", pending={"question": f"I keep needing a '{risk}' action you refused. How should I continue? (Or press Stop.)"})
+                            return
                         continue
                     if risk in RISKS and not await self._permitted(user_id, risk, run.get("skill_id")):
                         await self._set(run_id, status="awaiting_approval", pending={

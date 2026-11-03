@@ -27,7 +27,7 @@ function App() {
           </Routes>
         </ClerkAuthProvider>
       </BrowserRouter>
-      <Toaster theme="dark" position="bottom-right" richColors />
+      <Toaster theme="dark" position="bottom-right" offset="110px" richColors />
     </div>
   );
 }
