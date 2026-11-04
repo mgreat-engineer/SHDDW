@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="3" time="61.815" timestamp="2026-11-04T02:57:01.223591+00:00" hostname="agent-env-b29d45f2-9e43-4449-9a95-de8626b03cec"><testcase classname="tests.test_laptop_helper.TestLaptopAgent" name="test_agent_read_write_and_traversal" time="16.641"><failure message="AssertionError: assert 'name,price' == 'name,price\\nWidget,5'&#10;  &#10;  - name,price\nWidget,5&#10;  + name,price">tests/test_laptop_helper.py:250: in test_agent_read_write_and_traversal
+    assert open("/tmp/laptop/Docs/summary.txt").read().strip() == first.strip()
+E   AssertionError: assert 'name,price' == 'name,price\\nWidget,5'
+E     
+E     - name,price\nWidget,5
+E     + name,price</failure></testcase><testcase classname="tests.test_laptop_helper.TestLaptopAgent" name="test_offline_pause_and_resume" time="34.999" /><testcase classname="tests.test_laptop_helper.TestCloudRegression" name="test_cloud_browser_files_record_agent" time="10.087" /></testsuite></testsuites>

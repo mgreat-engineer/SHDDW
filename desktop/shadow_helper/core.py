@@ -176,7 +176,7 @@ class LocalFolders:
         try:
             return read_file_text(self._inside(name))
         except ValueError as e:
-            return str(e)
+            return f"ERROR: {e}"
 
     async def write(self, name, content):
         if "/" in name:
@@ -208,6 +208,7 @@ class Helper:
         self.session = None
         self.ws = None
         self.stop_flag = False
+        self.browser_lock = asyncio.Lock()
 
     def info(self):
         return {"version": VERSION, "os": f"{platform.system()} {platform.release()}", "folders": self.cfg["folders"],
@@ -215,12 +216,13 @@ class Helper:
                 "browser_ready": bool(self.session)}
 
     async def ensure_browser(self):
-        if self.session and not self.session.closed:
-            return self.session
-        s = BrowserSession(LocalFolders(self.cfg), app_dir() / "chrome-profile", launch_options(self.cfg))
-        await s.start()
-        self.session = s
-        return s
+        async with self.browser_lock:
+            if self.session and not self.session.closed:
+                return self.session
+            s = BrowserSession(LocalFolders(self.cfg), app_dir() / "chrome-profile", launch_options(self.cfg))
+            await s.start()
+            self.session = s
+            return s
 
     async def restart_browser(self):
         if self.session:
@@ -262,10 +264,11 @@ class Helper:
                 self.on_status("Not linked — paste a connection code")
                 await asyncio.sleep(2)
                 continue
-            url = self.cfg["server_url"].replace("https://", "wss://").replace("http://", "ws://") + "/api/helper/ws?token=" + self.cfg["token"]
+            url = self.cfg["server_url"].replace("https://", "wss://").replace("http://", "ws://") + "/api/helper/ws"
             try:
                 self.on_status("Connecting…")
-                async with websockets.connect(url, max_size=32 * 1024 * 1024, ping_interval=20, ping_timeout=40) as ws:
+                async with websockets.connect(url, additional_headers={"Authorization": "Bearer " + self.cfg["token"]},
+                                              max_size=32 * 1024 * 1024, ping_interval=20, ping_timeout=40) as ws:
                     self.ws = ws
                     delay = 2
                     self.on_status("Connected — Shadow can use this computer")

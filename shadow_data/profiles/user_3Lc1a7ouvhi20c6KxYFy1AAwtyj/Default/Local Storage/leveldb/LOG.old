@@ -1,5 +1,3 @@
-2026/11/03-21:14:05.033 aad Reusing MANIFEST /app/shadow_data/profiles/user_3Lc1a7ouvhi20c6KxYFy1AAwtyj/Default/Local Storage/leveldb/MANIFEST-000001
-2026/11/03-21:14:05.034 aad Recovering log #4
-2026/11/03-21:14:05.036 aad Level-0 table #7: started
-2026/11/03-21:14:05.050 aad Level-0 table #7: 550647 bytes OK
-2026/11/03-21:14:05.053 aad Delete type=0 #4
+2026/11/04-02:57:53.554 8f7 Reusing MANIFEST /app/shadow_data/profiles/user_3Lc1a7ouvhi20c6KxYFy1AAwtyj/Default/Local Storage/leveldb/MANIFEST-000001
+2026/11/04-02:57:53.555 8f7 Recovering log #8
+2026/11/04-02:57:53.556 8f7 Reusing old log /app/shadow_data/profiles/user_3Lc1a7ouvhi20c6KxYFy1AAwtyj/Default/Local Storage/leveldb/000008.log 

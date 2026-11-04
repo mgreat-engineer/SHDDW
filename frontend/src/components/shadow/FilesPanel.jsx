@@ -6,13 +6,14 @@ import { useApi, errMsg, fmtSize, fmtTime, saveBlob } from "@/lib/api";
 const SRC = { download: "text-[#00F0FF]", upload: "text-slate-400", generated: "text-[#00E676]" };
 
 function LaptopFiles({ api }) {
-  const [files, setFiles] = useState([]);
-  useEffect(() => { api.get("/target/files").then((r) => setFiles(r.data)).catch(() => {}); }, [api]);
+  const [files, setFiles] = useState(null);
+  useEffect(() => { api.get("/target/files").then((r) => setFiles(r.data)).catch(() => setFiles([])); }, [api]);
   return (
     <div className="space-y-1.5" data-testid="laptop-files">
       <p className="text-[10px] font-mono uppercase tracking-widest text-slate-500">On your laptop (allowed folders)</p>
-      {files.length === 0 && <p className="text-xs text-slate-500">No files in your allowed folders yet.</p>}
-      {files.map((f) => (
+      {files === null && <p className="text-xs text-slate-500 animate-pulse">Loading…</p>}
+      {files?.length === 0 && <p className="text-xs text-slate-500">No files in your allowed folders yet.</p>}
+      {(files || []).map((f) => (
         <div key={f.name} className="flex items-center gap-2 rounded-md bg-[#181B26] border border-[#262B3D] px-3 py-2" data-testid={`laptop-file-${f.name}`}>
           <p className="text-xs truncate flex-1 font-mono" title={f.name}>{f.name}</p>
           <span className="text-[10px] font-mono text-slate-500">{fmtSize(f.size)}</span>

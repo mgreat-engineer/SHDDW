@@ -117,7 +117,7 @@ export default function BrowserView({ mode, state, onState, onTakeOver, target, 
           <p className="text-sm font-mono text-slate-500 animate-pulse" data-testid="browser-loading">{target?.target === "laptop" && !target?.helper_online ? "Your laptop helper is offline — open Shadow Helper or switch to Cloud" : "Starting Shadow's Chrome…"}</p>
         )}
       </div>
-      <FileChooserDialog open={!!state?.file_chooser} onDone={loadState} />
+      <FileChooserDialog open={!!state?.file_chooser} onDone={loadState} laptop={target?.target === "laptop"} />
     </section>
   );
 }

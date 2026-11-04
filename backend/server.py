@@ -450,7 +450,7 @@ async def runs_resume(rid: str, uid: str = Depends(uid_of)):
     s = await session(uid, run.get("target", "cloud"))
     corr = await bcall(s.corrections_take())
     await bcall(s.clear_events())
-    upd = {"$set": {"status": "running", "pending": None}}
+    upd = {"$set": {"status": "running", "pending": None, "summary": ""}}
     if corr:
         upd["$push"] = {"corrections": {"$each": corr[-60:]}}
     await db.runs.update_one({"id": rid}, upd)
@@ -642,9 +642,15 @@ async def target_put(body: TargetIn, uid: str = Depends(uid_of)):
 @api.post("/devices/pair-code")
 async def devices_pair_code(uid: str = Depends(uid_of)):
     import secrets
-    code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(8))
+    from pymongo.errors import DuplicateKeyError
     exp = datetime.now(timezone.utc) + timedelta(minutes=15)
-    await db.pair_codes.insert_one({"code": code, "user_id": uid, "expires_at": exp.isoformat()})
+    for _ in range(5):
+        code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(8))
+        try:
+            await db.pair_codes.insert_one({"code": code, "user_id": uid, "expires_at": exp.isoformat()})
+            break
+        except DuplicateKeyError:
+            continue
     return {"code": code, "expires_at": exp.isoformat()}
 
 
@@ -665,6 +671,8 @@ async def devices_revoke(did: str, uid: str = Depends(uid_of)):
             await conn.ws.close(code=4401)
         hub.unregister(uid, conn)
         await db.user_settings.update_one({"user_id": uid}, {"$set": {"target": "cloud"}}, upsert=True)
+    elif not hub.get(uid):
+        await db.user_settings.update_one({"user_id": uid}, {"$set": {"target": "cloud"}}, upsert=True)
     return {"ok": True}
 
 
@@ -682,8 +690,10 @@ async def helper_pair(body: PairIn):
 
 
 @app.websocket("/api/helper/ws")
-async def helper_ws(ws: WebSocket, token: str = ""):
-    dev = await db.devices.find_one({"token_hash": hub.hash_token(token), "revoked": {"$ne": True}}, {"_id": 0})
+async def helper_ws(ws: WebSocket):
+    auth = ws.headers.get("authorization", "")
+    token = auth[7:] if auth.lower().startswith("bearer ") else ""
+    dev = await db.devices.find_one({"token_hash": hub.hash_token(token), "revoked": {"$ne": True}}, {"_id": 0}) if token else None
     if not dev:
         await ws.close(code=4401)
         return

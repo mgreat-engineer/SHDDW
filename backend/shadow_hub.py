@@ -103,6 +103,8 @@ class RemoteSession:
         if name not in TIMEOUTS:
             raise AttributeError(name)
 
-        async def call(**kw):
+        async def call(*args, **kw):
+            if args:
+                raise TypeError(f"{name}() must be called with keyword arguments")
             return await self.conn.call(name, timeout=TIMEOUTS[name], **kw)
         return call

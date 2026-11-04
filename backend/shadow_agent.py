@@ -294,6 +294,8 @@ Call exactly one tool."""
                     try:
                         name, args = await self._decide(run, sess)
                         errors = 0
+                    except HelperOffline:
+                        raise
                     except Exception as e:
                         errors += 1
                         log.exception("decide failed")
