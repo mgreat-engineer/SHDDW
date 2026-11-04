@@ -99,6 +99,11 @@ async def session(uid, target=None):
         return await resolve_session(uid, target or await target_of(uid))
     except HelperOffline:
         raise HTTPException(409, "Your laptop helper is offline. Open Shadow Helper on your laptop, or switch to Cloud.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("cloud browser failed to start")
+        raise HTTPException(503, f"Shadow's cloud browser could not start: {str(e)[:160]}")
 
 
 async def bcall(coro, code=400):
