@@ -908,6 +908,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 async def startup():
     app.state.index_task = asyncio.create_task(ensure_indexes())
     app.state.reaper = asyncio.create_task(sb.reap_idle(db, ACTIVE))
+    app.state.browser_install = asyncio.create_task(sb.ensure_browser_installed())
     await db.runs.update_many({"status": "running"}, {"$set": {"status": "paused", "summary": "Interrupted by a restart — press Resume to continue from the last step."}})
 
 

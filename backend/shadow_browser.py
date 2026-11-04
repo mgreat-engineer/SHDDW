@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 import time
 import os
 import re
@@ -606,7 +607,58 @@ class BrowserSession:
         return "ok"
 
 
+_install_lock = asyncio.Lock()
+_install_state = {"ready": False, "error": ""}
+
+
+async def _run(*cmd, timeout=600):
+    p = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    try:
+        out, _ = await asyncio.wait_for(p.communicate(), timeout)
+    except asyncio.TimeoutError:
+        p.kill()
+        return 1, "timed out"
+    return p.returncode, out.decode(errors="ignore")[-600:]
+
+
+async def _can_launch():
+    pw = await get_playwright()
+    try:
+        b = await pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        await b.close()
+        return True, ""
+    except Exception as e:
+        return False, str(e)[:400]
+
+
+async def ensure_browser_installed():
+    """Make sure a Chromium exists (production images may ship without one); installs it once if missing."""
+    if os.environ.get("CHROME_PATH") and Path(os.environ["CHROME_PATH"]).exists():
+        _install_state["ready"] = True
+        return
+    async with _install_lock:
+        if _install_state["ready"]:
+            return
+        if _pw is None and not os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
+            os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(DATA_DIR / "ms-playwright")
+        ok, err = await _can_launch()
+        if not ok:
+            log.warning("Chromium missing, installing: %s", err[:200])
+            code, out = await _run(sys.executable, "-m", "playwright", "install", "chromium")
+            ok, err = await _can_launch()
+            if not ok:
+                code, out = await _run(sys.executable, "-m", "playwright", "install-deps", "chromium")
+                log.warning("install-deps exit %s: %s", code, out[-300:])
+                ok, err = await _can_launch()
+        _install_state.update(ready=ok, error="" if ok else err)
+        if not ok:
+            log.error("Chromium unavailable: %s", err)
+
+
 async def get_session(user_id: str, db) -> BrowserSession:
+    await ensure_browser_installed()
+    if not _install_state["ready"]:
+        raise RuntimeError("the browser could not be installed on this server")
     async with _sessions_lock:
         s = _sessions.get(user_id)
         if s and not s.closed:
