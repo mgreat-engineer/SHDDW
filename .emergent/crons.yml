@@ -1,0 +1,8 @@
+crons:
+  - name: shadow-schedules
+    description: "Every 15 minutes, starts the users' scheduled skills that are due (on their laptop, or the cloud if offline)"
+    cron: "*/15 * * * *"
+    endpoint: "{{BASE_URL}}/api/cron/schedules"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true

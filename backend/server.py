@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
@@ -27,6 +27,7 @@ except ModuleNotFoundError:
 
 import shadow_browser as sb
 import shadow_hub as hub
+import shadow_schedule as sched
 from shadow_hub import HelperOffline, RemoteSession
 from shadow_agent import RunEngine, synthesize_skill, llm_key, MODEL
 
@@ -45,6 +46,7 @@ INDEXES: dict = {
     "devices": [IndexModel([("token_hash", ASCENDING)], name="token_hash"), IndexModel([("user_id", ASCENDING)], name="user")],
     "pair_codes": [IndexModel([("code", ASCENDING)], name="code", unique=True)],
     "user_settings": [IndexModel([("user_id", ASCENDING)], name="user", unique=True)],
+    "schedules": [IndexModel([("user_id", ASCENDING)], name="user"), IndexModel([("enabled", ASCENDING), ("next_run_at", ASCENDING)], name="due")],
 }
 
 
@@ -309,6 +311,7 @@ async def skills_delete(sid: str, uid: str = Depends(uid_of)):
     if not r.deleted_count:
         raise HTTPException(404, "Not found")
     await db.permissions.delete_many({"user_id": uid, "skill_id": sid})
+    await db.schedules.delete_many({"user_id": uid, "skill_id": sid})
     return {"ok": True}
 
 
@@ -316,6 +319,7 @@ async def skills_delete(sid: str, uid: str = Depends(uid_of)):
 class RunIn(BaseModel):
     command: Optional[str] = ""
     skill_id: Optional[str] = None
+    mode: Optional[str] = "real"
 
 
 class ApprovalIn(BaseModel):
@@ -337,27 +341,38 @@ async def get_run(rid, uid):
 async def runs_create(body: RunIn, uid: str = Depends(uid_of)):
     need_key()
     cur = await active_run(uid)
-    if cur:
-        if cur["status"] == "waiting_input" and body.command:
-            return await runs_reply(cur["id"], ReplyIn(text=body.command), uid)
+    if cur and cur["status"] == "waiting_input" and body.command and body.mode != "preview":
+        return await runs_reply(cur["id"], ReplyIn(text=body.command), uid)
+    if body.mode == "preview" and not body.skill_id:
+        raise HTTPException(400, "Pick a skill to preview")
+    return await create_run(uid, body.skill_id, body.command, await target_of(uid), mode=body.mode or "real")
+
+
+async def create_run(uid, skill_id, command, target, mode="real", schedule_id=None):
+    if await active_run(uid):
         raise HTTPException(409, "A task is already in progress. Finish, stop or resume it first.")
-    target = await target_of(uid)
     s = await session(uid, target)
     if (await bcall(s.state(), 409)).get("recording"):
         raise HTTPException(409, "Stop recording first")
     skill = None
-    if body.skill_id:
-        skill = await db.skills.find_one({"id": body.skill_id, "user_id": uid}, {"_id": 0})
+    if skill_id:
+        skill = await db.skills.find_one({"id": skill_id, "user_id": uid}, {"_id": 0})
         if not skill:
             raise HTTPException(404, "Skill not found")
-    goal = (body.command or "").strip() or (f'Run skill "{skill["name"]}"' if skill else "")
+    base = f'Run skill "{skill["name"]}"' if skill else ""
+    extra = (command or "").strip()
+    goal = (f"{base}. {extra}" if base and extra and schedule_id else extra or base)
     if not goal:
         raise HTTPException(400, "Tell Shadow what to do")
+    if mode == "preview":
+        goal = f'Preview skill "{skill["name"]}"'
     now = sb.now_iso()
     run = {"id": str(uuid.uuid4()), "user_id": uid, "goal": goal, "skill_id": skill["id"] if skill else None,
            "skill_name": skill["name"] if skill else None, "loaded_skills": [skill["id"]] if skill else [],
            "status": "running", "plan": [], "scratch": {}, "messages": [], "corrections": [], "pending": None,
-           "step_count": 0, "summary": "", "target": target, "created_at": now, "updated_at": now}
+           "step_count": 0, "summary": "", "target": target, "mode": "preview" if mode == "preview" else "real",
+           "tables": [], "schedule_id": schedule_id, "trigger": "schedule" if schedule_id else "manual",
+           "created_at": now, "updated_at": now}
     await db.runs.insert_one(run)
     run.pop("_id", None)
     await bcall(s.clear_events())
@@ -367,7 +382,7 @@ async def runs_create(body: RunIn, uid: str = Depends(uid_of)):
 
 @api.get("/runs")
 async def runs_list(uid: str = Depends(uid_of)):
-    return await db.runs.find({"user_id": uid}, {"_id": 0, "scratch": 0}).sort("created_at", -1).to_list(100)
+    return await db.runs.find({"user_id": uid}, {"_id": 0, "scratch": 0, "tables": 0}).sort("created_at", -1).to_list(100)
 
 
 @api.get("/runs/active")
@@ -379,7 +394,41 @@ async def runs_active(uid: str = Depends(uid_of)):
 async def runs_get(rid: str, uid: str = Depends(uid_of)):
     run = await get_run(rid, uid)
     run["steps"] = await db.run_steps.find({"run_id": rid}, {"_id": 0}).sort("idx", -1).to_list(200)
+    run["tables"] = [{"name": t["name"], "columns": t["columns"], "row_count": len(t["rows"]), "rows": t["rows"][-100:]}
+                     for t in run.get("tables") or []]
     return run
+
+
+@api.get("/runs/{rid}/export")
+async def runs_export(rid: str, uid: str = Depends(uid_of)):
+    import io
+    import openpyxl
+    from openpyxl.styles import Font
+    run = await get_run(rid, uid)
+    tables = run.get("tables") or []
+    if not tables:
+        raise HTTPException(404, "This task has no results table")
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    used = set()
+    for t in tables:
+        title = re.sub(r"[\[\]:*?/\\]", "_", t["name"])[:28] or "Results"
+        while title in used:
+            title += "_"
+        used.add(title)
+        ws = wb.create_sheet(title)
+        ws.append(t["columns"])
+        for c in ws[1]:
+            c.font = Font(bold=True)
+        for r in t["rows"]:
+            ws.append([r.get(col, "") for col in t["columns"]])
+        for i, col in enumerate(t["columns"], 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = min(50, max(12, len(col) + 4))
+    buf = io.BytesIO()
+    wb.save(buf)
+    name = f"shadow-results-{run['created_at'][:10]}.xlsx"
+    return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @api.get("/runs/{rid}/shot/{idx}")
@@ -617,14 +666,15 @@ def _device_out(d):
     conn = hub.get(d["user_id"])
     online = bool(conn and conn.device["id"] == d["id"])
     return {"id": d["id"], "name": d.get("name"), "created_at": d.get("created_at"), "last_seen": d.get("last_seen"),
-            "online": online, "info": (conn.info if online else d.get("info")) or {}}
+            "online": online, "info": (conn.info if online else d.get("info")) or {},
+            "last_update": d.get("last_update"), "update_history": list(reversed(d.get("update_history") or []))[:5]}
 
 
 @api.get("/target")
 async def target_get(uid: str = Depends(uid_of)):
     conn = hub.get(uid)
     return {"target": await target_of(uid), "helper_online": bool(conn),
-            "helper": {"name": conn.device.get("name"), "info": conn.info} if conn else None}
+            "helper": {"name": conn.device.get("name"), "info": conn.info, "last_update": conn.device.get("last_update")} if conn else None}
 
 
 @api.put("/target")
@@ -716,13 +766,120 @@ async def helper_ws(ws: WebSocket):
                 conn.resolve(msg)
             elif msg.get("event") == "hello":
                 conn.info = msg.get("info") or {}
-                await db.devices.update_one({"id": dev["id"]}, {"$set": {"info": conn.info, "last_seen": sb.now_iso()}})
+                upd = {"$set": {"info": conn.info, "last_seen": sb.now_iso()}}
+                old_v, new_v = (dev.get("info") or {}).get("version"), conn.info.get("version")
+                if old_v and new_v and old_v != new_v:
+                    entry = {"from": old_v, "to": new_v, "at": sb.now_iso()}
+                    upd["$set"]["last_update"] = entry
+                    upd["$push"] = {"update_history": {"$each": [entry], "$slice": -10}}
+                    dev["last_update"] = conn.device["last_update"] = entry
+                dev["info"] = conn.info
+                await db.devices.update_one({"id": dev["id"]}, upd)
     except (WebSocketDisconnect, Exception):
         pass
     finally:
         hub.unregister(uid, conn)
         conn.fail_all()
         await db.devices.update_one({"id": dev["id"]}, {"$set": {"last_seen": sb.now_iso()}})
+
+
+# ---------------- schedules ----------------
+class ScheduleIn(BaseModel):
+    skill_id: str
+    days: List[int]
+    time: str
+    timezone: str
+    target: str = "laptop"
+    instructions: Optional[str] = ""
+    enabled: bool = True
+
+
+def _check_schedule(body: ScheduleIn):
+    from zoneinfo import ZoneInfo
+    if not body.days or any(d not in range(7) for d in body.days):
+        raise HTTPException(400, "Pick at least one day")
+    if not re.fullmatch(r"([01]\d|2[0-3]):(00|15|30|45)", body.time):
+        raise HTTPException(400, "Time must be on a quarter hour, e.g. 08:00 or 08:15")
+    if body.target not in ("laptop", "cloud"):
+        raise HTTPException(400, "Unknown target")
+    try:
+        ZoneInfo(body.timezone)
+    except Exception:
+        raise HTTPException(400, "Unknown time zone")
+
+
+async def _schedule_doc(body: ScheduleIn, uid):
+    sk = await db.skills.find_one({"id": body.skill_id, "user_id": uid}, {"_id": 0, "name": 1})
+    if not sk:
+        raise HTTPException(404, "Skill not found")
+    nxt = sched.compute_next(sorted(set(body.days)), body.time, body.timezone) if body.enabled else None
+    return {**body.model_dump(), "days": sorted(set(body.days)), "skill_name": sk["name"],
+            "next_run_at": nxt.isoformat() if nxt else None, "updated_at": sb.now_iso()}
+
+
+@api.get("/schedules")
+async def schedules_list(uid: str = Depends(uid_of)):
+    return await db.schedules.find({"user_id": uid}, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+
+@api.post("/schedules")
+async def schedules_create(body: ScheduleIn, uid: str = Depends(uid_of)):
+    _check_schedule(body)
+    doc = {"id": str(uuid.uuid4()), "user_id": uid, **(await _schedule_doc(body, uid)), "created_at": sb.now_iso(),
+           "last_run_at": None, "last_status": None, "last_run_id": None, "last_note": ""}
+    await db.schedules.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/schedules/{sid}")
+async def schedules_update(sid: str, body: ScheduleIn, uid: str = Depends(uid_of)):
+    _check_schedule(body)
+    r = await db.schedules.update_one({"id": sid, "user_id": uid}, {"$set": await _schedule_doc(body, uid)})
+    if not r.matched_count:
+        raise HTTPException(404, "Not found")
+    return await db.schedules.find_one({"id": sid, "user_id": uid}, {"_id": 0})
+
+
+@api.delete("/schedules/{sid}")
+async def schedules_delete(sid: str, uid: str = Depends(uid_of)):
+    r = await db.schedules.delete_one({"id": sid, "user_id": uid})
+    if not r.matched_count:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
+
+
+async def _scheduled_start(uid, skill_id, instructions, target, schedule_id):
+    if not llm_key():
+        raise HTTPException(400, "OpenAI key missing")
+    return await create_run(uid, skill_id, instructions, target, schedule_id=schedule_id)
+
+
+_cron_seen: dict = {}
+
+
+@app.post("/api/cron/schedules")
+async def cron_schedules(request: Request):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    import hmac
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    auth = request.headers.get("authorization", "")
+    if not secret or not auth.startswith("Bearer ") or not hmac.compare_digest(auth[7:], secret):
+        raise HTTPException(401, "Unauthorized")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Invalid body")
+    run_id = request.headers.get("x-webhook-id") or body.get("run_id") or str(uuid.uuid4())
+    if run_id in _cron_seen:
+        return {"ok": True, "duplicate": True}
+    _cron_seen[run_id] = True
+    if len(_cron_seen) > 500:
+        _cron_seen.pop(next(iter(_cron_seen)))
+    asyncio.create_task(sched.run_due(db, _scheduled_start, lambda u: bool(hub.get(u))))
+    return {"ok": True}
 
 
 engine.resolver = resolve_session

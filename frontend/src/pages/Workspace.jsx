@@ -8,6 +8,7 @@ import CommandBar from "@/components/shadow/CommandBar";
 import ActivityPanel from "@/components/shadow/ActivityPanel";
 import ApprovalDialog from "@/components/shadow/ApprovalDialog";
 import SkillReviewDialog from "@/components/shadow/SkillReviewDialog";
+import UpdateBanner from "@/components/shadow/UpdateBanner";
 
 const ALERT = { completed: "Task finished", failed: "Task failed", awaiting_approval: "Shadow needs your OK", waiting_input: "Shadow has a question" };
 
@@ -91,6 +92,7 @@ export default function Workspace() {
     <div className="h-screen flex bg-[#08090E] text-slate-100 overflow-hidden grain" data-testid="workspace">
       <SideRail panel={panel} setPanel={setPanel} />
       <SidePanel panel={panel} refresh={refresh} onRunSkill={(s) => startRun({ skill_id: s.id, command: "" })}
+        onPreviewSkill={(s) => startRun({ skill_id: s.id, command: "", mode: "preview" })}
         onSelectRun={setRunId} selectedRunId={runId} target={target} onTarget={changeTarget} />
       <main className="flex-1 min-w-0 flex flex-col p-3 gap-3 relative z-10">
         {status && !status.openai_configured && (
@@ -98,11 +100,12 @@ export default function Workspace() {
             OpenAI key not added yet — the browser works, but learning, commands and voice are off until the key is added.
           </div>
         )}
+        <UpdateBanner target={target} />
         <BrowserView mode={mode} onState={setBstate} state={bstate} onTakeOver={() => isRunning && runAction("pause")} target={target} onTarget={changeTarget} />
         <CommandBar recording={!!bstate?.recording} recorded={bstate?.recorded || []} recordedCount={bstate?.recorded_count || 0}
           waiting={run?.status === "waiting_input"} busy={isRunning} onRun={startRun} onRecorded={setRecorded} />
       </main>
-      <ActivityPanel run={run} onAction={runAction} />
+      <ActivityPanel run={run} onAction={runAction} onRunReal={(r) => startRun({ skill_id: r.skill_id, command: "" })} />
       <ApprovalDialog run={run} onDecide={(decision) => runAction("approval", { decision })} />
       <SkillReviewDialog events={recorded} onClose={() => setRecorded(null)} onSaved={() => { setRecorded(null); setPanel("skills"); bump(); }} />
     </div>

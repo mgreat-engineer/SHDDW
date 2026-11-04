@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import { Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, Eye, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useApi, errMsg, fmtTime } from "@/lib/api";
 import SkillEditor from "./SkillEditor";
+import ScheduleDialog from "./ScheduleDialog";
 
 const BLANK = { name: "", description: "", steps: [""], parameters: [] };
 
-export default function SkillsPanel({ refresh, onRun }) {
+export default function SkillsPanel({ refresh, onRun, onPreview }) {
   const api = useApi();
   const [skills, setSkills] = useState([]);
   const [edit, setEdit] = useState(null);
+  const [sched, setSched] = useState(null);
   const load = useCallback(() => api.get("/skills").then((r) => setSkills(r.data)).catch(() => {}), [api]);
   useEffect(() => { load(); }, [load, refresh]);
 
@@ -39,6 +41,8 @@ export default function SkillsPanel({ refresh, onRun }) {
           <div className="flex items-center justify-between mt-2">
             <span className="text-[10px] font-mono text-slate-500">{s.steps?.length || 0} steps · {fmtTime(s.updated_at)}</span>
             <div className="flex gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => onPreview(s)} title="Preview (dry run)" data-testid={`skill-preview-button-${s.id}`} className="hover:text-[#FFB000]"><Eye className="h-3.5 w-3.5" /></button>
+              <button onClick={() => setSched({ skill_id: s.id })} title="Schedule" data-testid={`skill-schedule-button-${s.id}`} className="hover:text-[#00F0FF]"><CalendarClock className="h-3.5 w-3.5" /></button>
               <button onClick={() => setEdit(s)} data-testid={`skill-edit-button-${s.id}`}><Pencil className="h-3.5 w-3.5" /></button>
               <button onClick={() => del(s)} className="hover:text-[#FF3B30]" data-testid={`skill-delete-button-${s.id}`}><Trash2 className="h-3.5 w-3.5" /></button>
             </div>
@@ -56,6 +60,7 @@ export default function SkillsPanel({ refresh, onRun }) {
           </div>
         </DialogContent>
       </Dialog>
+      <ScheduleDialog open={!!sched} onOpenChange={(o) => !o && setSched(null)} skills={skills} initial={sched} onSaved={() => toast("See it under Schedules")} />
     </div>
   );
 }

@@ -18,7 +18,7 @@ TIMEOUTS = {
     "state": 10, "input": 20, "nav": 20, "navigate": 40, "tabs": 40, "resolve_dialog": 15, "upload": 30,
     "cancel_chooser": 10, "record_start": 10, "record_note": 10, "record_stop": 10, "corrections_start": 10,
     "corrections_take": 10, "take_events": 10, "clear_events": 10, "elements": 15, "page_text": 15,
-    "act": 120, "current_url": 10, "files_list": 20, "file_read": 30, "file_write": 30,
+    "act": 120, "current_url": 10, "files_list": 20, "file_read": 30, "file_write": 30, "highlight": 10, "unhighlight": 10,
 }
 
 

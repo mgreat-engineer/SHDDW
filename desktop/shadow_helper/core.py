@@ -21,7 +21,8 @@ log = logging.getLogger("shadow.helper")
 
 ALLOWED = {"state", "frame", "input", "nav", "navigate", "tabs", "resolve_dialog", "upload", "cancel_chooser",
            "record_start", "record_note", "record_stop", "corrections_start", "corrections_take", "take_events",
-           "clear_events", "elements", "page_text", "act", "current_url", "files_list", "file_read", "file_write"}
+           "clear_events", "elements", "page_text", "act", "current_url", "files_list", "file_read", "file_write",
+           "highlight", "unhighlight"}
 PASSIVE = {"state", "frame", "current_url", "files_list", "take_events", "clear_events"}
 
 

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, ChevronRight, Circle, CircleDot, Hand, Lightbulb, MinusCircle, Pause, Play, Square, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronRight, Circle, CircleDot, Eye, Hand, Lightbulb, MinusCircle, Pause, Play, PlayCircle, Square, XCircle } from "lucide-react";
 import { useApi } from "@/lib/api";
 import StatusBadge from "./StatusBadge";
+import ResultsTable from "./ResultsTable";
+import PreviewViewer from "./PreviewViewer";
 
 function Shot({ runId, idx }) {
   const api = useApi();
@@ -19,12 +21,12 @@ const PLAN_ICON = { done: CheckCircle2, active: CircleDot, skipped: MinusCircle,
 function Step({ s, runId }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="border-l border-[#262B3D] pl-3 py-1.5 fade-up" data-testid={`run-step-${s.idx}`}>
+    <div className={`border-l pl-3 py-1.5 fade-up ${s.simulated ? "border-[#FFB000]/50" : "border-[#262B3D]"}`} data-testid={`run-step-${s.idx}`}>
       <button onClick={() => setOpen(!open)} className="w-full text-left flex items-start gap-1.5">
         <ChevronRight className={`h-3.5 w-3.5 mt-0.5 text-slate-500 transition-transform ${open ? "rotate-90" : ""}`} />
         <div className="min-w-0">
-          <p className="text-xs font-mono"><span className="text-slate-500">#{s.idx}</span> <span className={s.ok ? "text-[#00F0FF]" : "text-[#FF3B30]"}>{s.action}</span></p>
-          <p className="text-xs text-slate-300 leading-snug">{s.reason}</p>
+          <p className="text-xs font-mono"><span className="text-slate-500">#{s.idx}</span> <span className={s.simulated ? "text-[#FFB000]" : s.ok ? "text-[#00F0FF]" : "text-[#FF3B30]"}>{s.simulated ? `would ${s.action}` : s.action}</span></p>
+          <p className="text-xs text-slate-300 leading-snug">{s.simulated ? s.result.replace("PREVIEW — not done. Would ", "Would ") : s.reason}</p>
         </div>
       </button>
       {open && (
@@ -49,7 +51,22 @@ function Controls({ run, onAction }) {
   );
 }
 
-export default function ActivityPanel({ run, onAction }) {
+function PreviewBar({ run, onRunReal, onView }) {
+  if (run.mode !== "preview") return null;
+  const done = run.status === "completed";
+  return (
+    <div className="rounded-lg border border-[#FFB000]/40 bg-[#FFB000]/10 p-3 space-y-2" data-testid="preview-banner">
+      <p className="text-xs text-[#FFB000] flex items-center gap-1.5"><Eye className="h-3.5 w-3.5" />Preview — Shadow only looks and plans. Nothing is clicked or typed.</p>
+      <div className="flex gap-2 flex-wrap">
+        {(run.steps || []).length > 0 && <button onClick={onView} data-testid="preview-view-steps-button" className="text-xs px-3 py-1.5 rounded-lg border border-[#FFB000]/40 text-[#FFB000] hover:bg-[#FFB000]/10">Step-by-step</button>}
+        {done && run.skill_id && <button onClick={() => onRunReal(run)} data-testid="preview-run-real-button" className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#00F0FF] text-black font-semibold"><PlayCircle className="h-3.5 w-3.5" />Run it for real</button>}
+      </div>
+    </div>
+  );
+}
+
+export default function ActivityPanel({ run, onAction, onRunReal }) {
+  const [viewer, setViewer] = useState(false);
   return (
     <aside className="w-[340px] shrink-0 border-l border-[#262B3D] bg-[#12141C] flex flex-col relative z-10" data-testid="activity-panel">
       <div className="px-5 pt-5 pb-3 border-b border-[#262B3D]">
@@ -60,7 +77,8 @@ export default function ActivityPanel({ run, onAction }) {
               <h3 className="font-display text-base font-semibold leading-snug" data-testid="run-goal">{run.goal}</h3>
               <StatusBadge status={run.status} />
             </div>
-            <p className="text-[11px] font-mono text-slate-500">{run.step_count} steps{run.skill_name ? ` · skill: ${run.skill_name}` : ""}</p>
+            <p className="text-[11px] font-mono text-slate-500">{run.step_count} steps{run.skill_name ? ` · skill: ${run.skill_name}` : ""}{run.trigger === "schedule" ? " · scheduled" : ""} · {run.target === "laptop" ? "laptop" : "cloud"}</p>
+            <PreviewBar run={run} onRunReal={onRunReal} onView={() => setViewer(true)} />
             <Controls run={run} onAction={onAction} />
             {run.status === "paused" && <p className="text-xs text-[#FFB000]" data-testid="run-paused-hint">You have control. Anything you do now is learned as a correction — press Resume when done.</p>}
             {run.pending?.question && run.status === "waiting_input" && <p className="text-sm text-[#00F0FF] bg-[#00F0FF]/10 rounded-lg p-3" data-testid="run-question">{run.pending.question}</p>}
@@ -71,6 +89,7 @@ export default function ActivityPanel({ run, onAction }) {
       </div>
       {run && (
         <div className="flex-1 min-h-0 overflow-y-auto thin-scroll px-5 py-4 space-y-5">
+          <ResultsTable run={run} />
           {run.plan?.length > 0 && (
             <div data-testid="run-plan">
               <p className="text-[10px] font-mono uppercase tracking-widest text-slate-500 mb-2">Checklist · {run.plan.filter((p) => p.status === "done").length}/{run.plan.length}</p>
@@ -90,6 +109,7 @@ export default function ActivityPanel({ run, onAction }) {
           {run.status === "failed" && <p className="text-xs text-[#FF3B30] flex gap-1.5"><XCircle className="h-3.5 w-3.5" />Press Resume to continue from the last saved step.</p>}
         </div>
       )}
+      <PreviewViewer run={run} open={viewer} onOpenChange={setViewer} />
     </aside>
   );
 }

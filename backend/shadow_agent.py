@@ -26,6 +26,7 @@ How to work:
 - Prefer element ids from the INTERACTIVE ELEMENTS list. Use click_at with screenshot coordinates (1280x800) only if the target is not listed.
 - After every action, verify on the next screenshot that it worked. If something failed or the page changed, rethink and try a different approach (another element, search, scroll, reload, direct URL). Do not repeat the same failing action more than twice.
 - Carry information between sites/tabs with save_data. Read long page content with read_page. Read user spreadsheets/CSVs with read_file; write results with write_file.
+- Whenever the goal gathers data (prices, orders, rows, results), record it with add_rows (consistent columns, one row per item) as you go — the user watches the table fill up live and exports it to Excel.
 - If a dialog is pending, handle it with handle_dialog before anything else. If a file picker is open, use upload_file.
 - Risk: set risk="pay" for any purchase/payment/transfer, "send" for sending/submitting messages, emails, forms or orders to other people/systems, "delete" for deleting/cancelling/removing data. Otherwise risk="none". Be honest; the user's approval depends on it.
 - Use remember only for durable facts/preferences the user states. Use grant_permission only when the user's own instruction explicitly gives standing permission.
@@ -72,8 +73,17 @@ TOOLS = [
     _fn("grant_permission", "Record standing permission the user explicitly gave in their instruction.", {"category": {"type": "string", "enum": list(RISKS)}}, ["category"]),
     _fn("wait", "Wait for the page (seconds, max 30).", {"seconds": I}, ["seconds"]),
     _fn("ask_user", "Pause and ask the user a question.", {"question": S}, ["question"]),
+    _fn("add_rows", "Add rows to a results table the user sees live and can export to Excel. Use for any collected data (one row per item).",
+        {"table": S, "columns": {"type": "array", "items": S}, "rows": {"type": "array", "items": {"type": "array", "items": S}}}, ["table", "columns", "rows"]),
     _fn("finish", "End the task.", {"summary": S, "success": {"type": "boolean"}}, ["summary", "success"]),
 ]
+SIMULATED = {"click", "click_at", "type_text", "select_option", "press_key", "hover", "upload_file", "handle_dialog",
+             "write_file", "remember", "grant_permission", "add_rows"}
+PREVIEW_NOTE = """MODE: PREVIEW (dry run). Nothing you do with click, type, select, keys, hover, upload, dialogs, files, memory or tables is executed.
+Those calls are only shown to the user as "would do" steps with a screenshot. You may really navigate, open/switch tabs, scroll and read pages.
+Walk through EVERY step of the loaded skill in order. Call the action you would take for each step so the user sees it, and open pages by URL where the skill names them.
+Keep the plan checklist = the skill's steps. Then call finish with a summary of what a real run would do and anything that looked risky or unclear.
+"""
 
 
 def llm_key():
@@ -129,6 +139,7 @@ class RunEngine:
     def __init__(self, db, resolver):
         self.db = db
         self.resolver = resolver
+        self.last_els = {}
 
     def start(self, run_id: str, user_id: str):
         t = _tasks.get(run_id)
@@ -140,14 +151,14 @@ class RunEngine:
         fields["updated_at"] = now_iso()
         await self.db.runs.update_one({"id": run_id}, {"$set": fields})
 
-    async def _step(self, run, sess, action, args, reason, result, ok=True):
+    async def _step(self, run, sess, action, args, reason, result, ok=True, simulated=False):
         idx = run["step_count"] + 1
         shot = await sess.frame(quality=45)
         if shot:
             (user_dir(run["user_id"], f"shots/{run['id']}") / f"{idx}.jpg").write_bytes(shot)
         await self.db.run_steps.insert_one({
             "id": str(uuid.uuid4()), "run_id": run["id"], "user_id": run["user_id"], "idx": idx,
-            "action": action, "args": args, "reason": reason, "result": str(result)[:1500], "ok": ok,
+            "action": action, "args": args, "reason": reason, "result": str(result)[:1500], "ok": ok, "simulated": simulated,
             "has_shot": bool(shot), "url": await sess.current_url(), "created_at": now_iso()})
         run["step_count"] = idx
         await self._set(run["id"], step_count=idx)
@@ -173,6 +184,7 @@ class RunEngine:
         url = await sess.current_url()
         st = await sess.state()
         els = await sess.elements()
+        self.last_els[run["id"]] = {e["id"]: e for e in els}
         el_lines = "\n".join(
             f'[{e["id"]}] {e["tag"]}{"/" + e["type"] if e["type"] else ""}{" role=" + e["role"] if e["role"] else ""} "{e["text"]}"'
             f'{" label=" + repr(e["label"]) if e["label"] else ""}{" href=" + e["href"] if e["href"] else ""}{" (checked)" if e["checked"] else ""} @({e["x"]},{e["y"]})'
@@ -187,7 +199,9 @@ class RunEngine:
         chooser = "FILE PICKER IS OPEN — use upload_file." if st["file_chooser"] else ""
         msgs = "\n".join(f"- {m}" for m in run.get("messages", [])) or "(none)"
         corr = "\n".join(f"- {c}" for c in run.get("corrections", [])) or "(none)"
-        return f"""GOAL: {run['goal']}
+        tables = "\n".join(f'- "{t["name"]}" columns {t["columns"]} — {len(t["rows"])} rows' for t in run.get("tables") or []) or "(none yet)"
+        mode = PREVIEW_NOTE if run.get("mode") == "preview" else ""
+        return f"""{mode}GOAL: {run['goal']}
 USER MESSAGES DURING THIS RUN:
 {msgs}
 
@@ -204,6 +218,7 @@ FILES AVAILABLE: {', '.join(f['name'] for f in files) or '(none)'}
 PLAN:
 {plan}
 SAVED DATA: {json.dumps(run.get('scratch', {}))[:3000]}
+RESULT TABLES (add_rows): {tables}
 USER CORRECTIONS (the user took over and did this; do it their way):
 {corr}
 
@@ -235,6 +250,31 @@ Call exactly one tool."""
         tc = resp.tool_calls[0]
         return tc.name, dict(tc.arguments or {})
 
+    async def _simulate(self, run, sess, name, a, reason):
+        el = self.last_els.get(run["id"], {}).get(a.get("element_id")) or {}
+        what = el.get("text") or el.get("label") or el.get("href") or el.get("tag") or ""
+        desc = {
+            "click": f'click "{what}"', "click_at": f'click at ({a.get("x")}, {a.get("y")})',
+            "type_text": f'type "{a.get("text", "")}" into "{what}"' + (" and press Enter" if a.get("press_enter") else ""),
+            "select_option": f'choose "{a.get("option")}" in "{what}"', "press_key": f'press {a.get("key")}',
+            "hover": f'hover over "{what}"', "upload_file": f'upload {", ".join(a.get("file_names", []))}',
+            "handle_dialog": f'{"accept" if a.get("accept") else "dismiss"} the dialog', "write_file": f'save file {a.get("file_name")}',
+            "remember": f'remember "{a.get("fact")}"', "grant_permission": f'grant "{a.get("category")}" permission',
+            "ask_user": f'ask you: "{a.get("question")}"', "add_rows": f'add {len(a.get("rows", []))} rows to table "{a.get("table")}"',
+        }.get(name, name)
+        lit = False
+        if name in ("click", "type_text", "select_option", "hover", "click_at"):
+            try:
+                lit = await sess.highlight(element_id=a.get("element_id"), x=a.get("x"), y=a.get("y"), label=f"Would {desc}"[:80])
+            except Exception:
+                lit = False
+        await self._step(run, sess, name, a, reason, f"PREVIEW — not done. Would {desc}.", True, simulated=True)
+        if lit:
+            try:
+                await sess.unhighlight()
+            except Exception:
+                pass
+
     async def _execute(self, run, sess, name, a):
         uid = run["user_id"]
         if name in BROWSER_TOOLS:
@@ -243,6 +283,23 @@ Call exactly one tool."""
             return await sess.file_read(name=a["file_name"])
         elif name == "write_file":
             return await sess.file_write(name=a["file_name"], content=a["content"])
+        elif name == "add_rows":
+            cols = [str(c)[:60] for c in a.get("columns", [])][:40]
+            tables = run.setdefault("tables", [])
+            t = next((x for x in tables if x["name"] == a["table"]), None)
+            if not t:
+                if len(tables) >= 10:
+                    return "ERROR: at most 10 tables per task"
+                t = {"name": str(a["table"])[:60], "columns": cols, "rows": []}
+                tables.append(t)
+            for c in cols:
+                if c not in t["columns"]:
+                    t["columns"].append(c)
+            room = 5000 - len(t["rows"])
+            new = [{c: ("" if v is None else str(v)[:500]) for c, v in zip(cols, r)} for r in a.get("rows", [])[:max(room, 0)]]
+            t["rows"].extend(new)
+            await self._set(run["id"], tables=tables)
+            return f"Added {len(new)} rows to '{t['name']}' ({len(t['rows'])} total)" + (" — table is full (5000 rows)" if room <= len(new) else "")
         elif name == "update_plan":
             run["plan"] = a["items"]
             await self._set(run["id"], plan=a["items"])
@@ -306,6 +363,8 @@ Call exactly one tool."""
                         continue
                     reason = args.pop("reason", "")
                     risk = args.pop("risk", "none")
+                    if run.get("mode") == "preview":
+                        risk = "none"
                     if risk in run.get("blocked_risks", []):
                         blocked = run.get("blocked_count", 0) + 1
                         await self._step(run, sess, name, args, reason, f"BLOCKED: the user refused '{risk}' actions in this run. Do not try again.", False)
@@ -318,12 +377,17 @@ Call exactly one tool."""
                         await self._set(run_id, status="awaiting_approval", pending={
                             "tool": name, "args": args, "reason": reason, "risk": risk, "url": await sess.current_url()})
                         return
+                if run.get("mode") == "preview" and (name in SIMULATED or name == "ask_user"):
+                    await self._simulate(run, sess, name, args, reason)
+                    continue
                 if name == "finish":
                     await self._step(run, sess, name, args, reason, args.get("summary", ""))
                     ok_done = args.get("success", True)
                     plan = [{**p, "status": "done"} if ok_done and p.get("status") in ("todo", "active") else p for p in run.get("plan", [])]
                     await self._set(run_id, status="completed" if ok_done else "failed", summary=args.get("summary", ""), plan=plan)
-                    await self._after_finish(run)
+                    self.last_els.pop(run_id, None)
+                    if run.get("mode") != "preview":
+                        await self._after_finish(run)
                     return
                 if name == "ask_user":
                     await self._step(run, sess, name, args, reason, "Waiting for your reply")

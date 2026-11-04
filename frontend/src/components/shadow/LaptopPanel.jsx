@@ -54,7 +54,14 @@ function Device({ d, onUnlink }) {
         <p className="text-sm font-semibold flex items-center gap-2"><Laptop className="h-4 w-4 text-slate-400" />{d.name}</p>
         <span data-testid={`device-status-${d.id}`} className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border ${d.online ? "text-[#00E676] border-[#00E676]/40" : "text-slate-500 border-[#262B3D]"}`}>{d.online ? "Online" : "Offline"}</span>
       </div>
-      {i.os && <p className="text-[10px] font-mono text-slate-500">{i.os} · helper {i.version} · Chrome logins {i.chrome_logins ? "on" : "off"}</p>}
+      {i.os && <p className="text-[10px] font-mono text-slate-500" data-testid={`device-version-${d.id}`}>{i.os} · helper <span className="text-slate-300">v{i.version}</span> · Chrome logins {i.chrome_logins ? "on" : "off"}</p>}
+      {d.last_update && <p className="text-[11px] text-[#00E676]" data-testid={`device-last-update-${d.id}`}>Updated {d.last_update.from} → {d.last_update.to} on {fmtTime(d.last_update.at)}</p>}
+      {d.update_history?.length > 1 && (
+        <details className="text-[10px] font-mono text-slate-500">
+          <summary className="cursor-pointer">Update history</summary>
+          {d.update_history.map((u) => <p key={u.at}>{fmtTime(u.at)} · {u.from} → {u.to}</p>)}
+        </details>
+      )}
       {i.folders?.length > 0 && (
         <div className="text-[11px] text-slate-400">
           <p className="text-[10px] font-mono uppercase tracking-widest text-slate-500 mt-1">Allowed folders</p>
@@ -82,7 +89,7 @@ export default function LaptopPanel({ target, onTarget, refresh }) {
       <div className="rounded-lg border border-[#262B3D] bg-[#181B26] p-3 space-y-2">
         <p className="text-[10px] font-mono uppercase tracking-widest text-slate-500">Where Shadow works</p>
         <TargetToggle target={target} onChange={(t) => onTarget(t)} />
-        <p className="text-[11px] text-slate-500" data-testid="laptop-helper-status">{target?.helper_online ? `Connected: ${target.helper?.name}` : "No laptop connected right now."}</p>
+        <p className="text-[11px] text-slate-500" data-testid="laptop-helper-status">{target?.helper_online ? `Connected: ${target.helper?.name} · v${target.helper?.info?.version || "?"}` : "No laptop connected right now."}</p>
       </div>
       <div className="space-y-2">
         <p className="text-[10px] font-mono uppercase tracking-widest text-slate-500">Link a computer</p>

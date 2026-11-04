@@ -43,6 +43,21 @@ RECORDER_JS = r"""
 })();
 """
 
+HIGHLIGHT_JS = r"""
+([id, x, y, label]) => {
+  const old = document.getElementById('__shadow_hl'); if (old) old.remove();
+  let r;
+  if (id) { const el = document.querySelector(`[data-shadow-id="${id}"]`); if (!el) return false; r = el.getBoundingClientRect(); }
+  else if (x != null) r = {left: x - 16, top: y - 16, width: 32, height: 32};
+  else return false;
+  const d = document.createElement('div'); d.id = '__shadow_hl';
+  d.style.cssText = `position:fixed;left:${r.left - 4}px;top:${r.top - 4}px;width:${r.width + 8}px;height:${r.height + 8}px;border:3px solid #FF3B30;border-radius:6px;box-shadow:0 0 0 9999px rgba(0,0,0,0.28);z-index:2147483647;pointer-events:none;`;
+  const t = document.createElement('div'); t.textContent = label;
+  t.style.cssText = `position:absolute;left:0;${r.top > 34 ? 'top:-28px' : 'bottom:-28px'};background:#FF3B30;color:#fff;font:600 12px sans-serif;padding:4px 8px;border-radius:4px;white-space:nowrap;`;
+  d.appendChild(t); document.documentElement.appendChild(d); return true;
+}
+"""
+
 ELEMENTS_JS = r"""
 () => {
   const sel = 'a,button,input,textarea,select,[role=button],[role=link],[role=tab],[role=menuitem],[role=checkbox],[role=radio],[role=option],[role=combobox],[role=switch],[onclick],[contenteditable=true],summary,label';
@@ -491,6 +506,24 @@ class BrowserSession:
     async def record_stop(self):
         events, self.recording = self.recording or [], None
         return events
+
+    async def highlight(self, element_id=None, x=None, y=None, label=""):
+        page = self.page()
+        if not page:
+            return False
+        try:
+            return await asyncio.wait_for(page.evaluate(HIGHLIGHT_JS, [element_id, x, y, label]), 4)
+        except Exception:
+            return False
+
+    async def unhighlight(self):
+        page = self.page()
+        if page:
+            try:
+                await asyncio.wait_for(page.evaluate("() => { const o = document.getElementById('__shadow_hl'); if (o) o.remove(); }"), 4)
+            except Exception:
+                pass
+        return True
 
     async def corrections_start(self):
         self.correction_sink = []
