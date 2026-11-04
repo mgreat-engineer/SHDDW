@@ -297,6 +297,9 @@ Call exactly one tool."""
                     t["columns"].append(c)
             room = 5000 - len(t["rows"])
             new = [{c: ("" if v is None else str(v)[:500]) for c, v in zip(cols, r)} for r in a.get("rows", [])[:max(room, 0)]]
+            size = len(json.dumps(tables)) + len(json.dumps(new))
+            if size > 8_000_000:
+                return "ERROR: results are too large to keep in one task (8 MB). Save the rest with write_file as CSV instead."
             t["rows"].extend(new)
             await self._set(run["id"], tables=tables)
             return f"Added {len(new)} rows to '{t['name']}' ({len(t['rows'])} total)" + (" — table is full (5000 rows)" if room <= len(new) else "")

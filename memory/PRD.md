@@ -32,7 +32,14 @@ Build a standalone browser like Polar browser with a mind of its own. It learns 
 - Workflow: version 1.0.<run_number>, build_info.json baked in, tag helper-v<version>, make_latest, checksums.txt. Signing/notarization steps run only when GitHub secrets exist (MACOS_CERT_P12…, WIN_CERT_PFX…; see desktop/README.md)
 - Tested offline: tests/test_updater.py (version compare, checksum pass/fail, idle gating). The real GitHub build has not run yet
 
+## Update banner, Skill preview, Results table, Schedules (2026-06)
+- Update banner: helper_ws records upgrades only (last_update + update_history). Banner in Workspace (dismissible, localStorage). Laptop panel shows version and history
+- Preview (user choice: only look and plan): run mode 'preview'. Click/type/keys/upload/dialog/files/memory/tables/ask_user are simulated as "Would …" steps with a red element highlight in the screenshot. Step-by-step viewer and a "Run it for real" button
+- Results table: add_rows tool → run.tables (≤10 tables, 5000 rows, 8 MB). Live mini table + full dialog. GET /api/runs/{id}/export → xlsx (formula-escaped)
+- Schedules (user choice: laptop offline → cloud): /api/schedules CRUD (days 0=Sun, quarter-hour time, IANA tz). .emergent/crons.yml calls POST /api/cron/schedules every 15 min (WEBHOOK_CRON_SECRET), atomically claims due slots and starts runs (trigger 'schedule'). Schedules panel + skill-card button
+- Tested: iteration_4 (backend 100% after the delete fix, UI flows) + minor fixes
+
 ## Backlog
-- P1: Phase 2 remainder: scheduled skills; buy signing certificates (Apple Developer ID $99/yr; Windows certificate or Azure Trusted Signing) and add them as GitHub secrets
+- P1: Phase 2 remainder: buy signing certificates (Apple Developer ID $99/yr; Windows certificate or Azure Trusted Signing) and add them as GitHub secrets; email/push alert when a scheduled run waits for approval
 - P1: Move files to object storage for multi-instance production
 - P2: Phase 3 virtual-desktop control of other apps; richer iframe support; parallel runs per user

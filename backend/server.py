@@ -28,6 +28,10 @@ except ModuleNotFoundError:
 import shadow_browser as sb
 import shadow_hub as hub
 import shadow_schedule as sched
+
+
+def sched_version(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v or "")[:3]) or (0,)
 from shadow_hub import HelperOffline, RemoteSession
 from shadow_agent import RunEngine, synthesize_skill, llm_key, MODEL
 
@@ -399,6 +403,11 @@ async def runs_get(rid: str, uid: str = Depends(uid_of)):
     return run
 
 
+def _safe_cell(v):
+    v = "" if v is None else str(v)
+    return "'" + v if v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
+
+
 @api.get("/runs/{rid}/export")
 async def runs_export(rid: str, uid: str = Depends(uid_of)):
     import io
@@ -421,7 +430,7 @@ async def runs_export(rid: str, uid: str = Depends(uid_of)):
         for c in ws[1]:
             c.font = Font(bold=True)
         for r in t["rows"]:
-            ws.append([r.get(col, "") for col in t["columns"]])
+            ws.append([_safe_cell(r.get(col, "")) for col in t["columns"]])
         for i, col in enumerate(t["columns"], 1):
             ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = min(50, max(12, len(col) + 4))
     buf = io.BytesIO()
@@ -768,7 +777,7 @@ async def helper_ws(ws: WebSocket):
                 conn.info = msg.get("info") or {}
                 upd = {"$set": {"info": conn.info, "last_seen": sb.now_iso()}}
                 old_v, new_v = (dev.get("info") or {}).get("version"), conn.info.get("version")
-                if old_v and new_v and old_v != new_v:
+                if old_v and new_v and sched_version(new_v) > sched_version(old_v):
                     entry = {"from": old_v, "to": new_v, "at": sb.now_iso()}
                     upd["$set"]["last_update"] = entry
                     upd["$push"] = {"update_history": {"$each": [entry], "$slice": -10}}
@@ -844,7 +853,7 @@ async def schedules_update(sid: str, body: ScheduleIn, uid: str = Depends(uid_of
 @api.delete("/schedules/{sid}")
 async def schedules_delete(sid: str, uid: str = Depends(uid_of)):
     r = await db.schedules.delete_one({"id": sid, "user_id": uid})
-    if not r.matched_count:
+    if not r.deleted_count:
         raise HTTPException(404, "Not found")
     return {"ok": True}
 

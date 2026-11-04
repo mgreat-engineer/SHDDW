@@ -74,7 +74,7 @@ export default function ActivityPanel({ run, onAction, onRunReal }) {
         {!run ? <p className="text-sm text-slate-400 mt-2" data-testid="activity-empty">No task yet. Type a command, run a skill, or press Watch me.</p> : (
           <div className="mt-2 space-y-3">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="font-display text-base font-semibold leading-snug" data-testid="run-goal">{run.goal}</h3>
+              <h3 className="font-display text-base font-semibold leading-snug min-w-0 break-words line-clamp-3" title={run.goal} data-testid="run-goal">{run.goal}</h3>
               <StatusBadge status={run.status} />
             </div>
             <p className="text-[11px] font-mono text-slate-500">{run.step_count} steps{run.skill_name ? ` · skill: ${run.skill_name}` : ""}{run.trigger === "schedule" ? " · scheduled" : ""} · {run.target === "laptop" ? "laptop" : "cloud"}</p>

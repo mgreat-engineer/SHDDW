@@ -1,3 +1,3 @@
-2026/11/04-05:27:22.935 d01 Reusing MANIFEST /app/shadow_data/profiles/user_3Lc1a7ouvhi20c6KxYFy1AAwtyj/Default/Sync Data/LevelDB/MANIFEST-000001
-2026/11/04-05:27:22.940 d01 Recovering log #3
-2026/11/04-05:27:22.941 d01 Reusing old log /app/shadow_data/profiles/user_3Lc1a7ouvhi20c6KxYFy1AAwtyj/Default/Sync Data/LevelDB/000003.log 
+2026/11/04-05:48:53.581 1b66 Reusing MANIFEST /app/shadow_data/profiles/user_3Lc1a7ouvhi20c6KxYFy1AAwtyj/Default/Sync Data/LevelDB/MANIFEST-000001
+2026/11/04-05:48:53.581 1b66 Recovering log #3
+2026/11/04-05:48:53.583 1b66 Reusing old log /app/shadow_data/profiles/user_3Lc1a7ouvhi20c6KxYFy1AAwtyj/Default/Sync Data/LevelDB/000003.log 

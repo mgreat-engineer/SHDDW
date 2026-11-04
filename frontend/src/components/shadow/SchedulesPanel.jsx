@@ -15,12 +15,12 @@ const dayText = (days) => {
 
 export default function SchedulesPanel({ refresh, onSelectRun }) {
   const api = useApi();
-  const [items, setItems] = useState([]);
-  const [skills, setSkills] = useState([]);
+  const [items, setItems] = useState(null);
+  const [skills, setSkills] = useState(null);
   const [edit, setEdit] = useState(null);
   const load = useCallback(() => {
-    api.get("/schedules").then((r) => setItems(r.data)).catch(() => {});
-    api.get("/skills").then((r) => setSkills(r.data)).catch(() => {});
+    api.get("/schedules").then((r) => setItems(r.data)).catch(() => setItems([]));
+    api.get("/skills").then((r) => setSkills(r.data)).catch(() => setSkills([]));
   }, [api]);
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, [load, refresh]);
 
@@ -32,6 +32,7 @@ export default function SchedulesPanel({ refresh, onSelectRun }) {
     try { await api.delete(`/schedules/${s.id}`); load(); } catch (e) { toast.error(errMsg(e)); }
   };
 
+  if (items === null || skills === null) return <p className="text-sm text-slate-500 animate-pulse" data-testid="schedules-loading">Loading schedules…</p>;
   return (
     <div className="space-y-3" data-testid="schedules-panel">
       <p className="text-xs text-slate-400">Skills that run by themselves. If your laptop is off at that time, the skill runs in the cloud instead.</p>

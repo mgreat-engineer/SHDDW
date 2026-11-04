@@ -31,7 +31,13 @@ async def run_due(db, start_run, helper_online):
         target = "laptop" if sc.get("target") == "laptop" and helper_online(sc["user_id"]) else "cloud"
         note = "" if target == sc.get("target") else "Laptop was offline, so it ran in the cloud."
         try:
-            run = await start_run(sc["user_id"], sc["skill_id"], sc.get("instructions", ""), target, sc["id"])
+            try:
+                run = await start_run(sc["user_id"], sc["skill_id"], sc.get("instructions", ""), target, sc["id"])
+            except Exception as e:
+                if target != "laptop" or "laptop" not in str(getattr(e, "detail", e)).lower():
+                    raise
+                target, note = "cloud", "Laptop went offline, so it ran in the cloud."
+                run = await start_run(sc["user_id"], sc["skill_id"], sc.get("instructions", ""), target, sc["id"])
             res = {"last_status": "started", "last_run_id": run["id"], "last_note": note}
         except Exception as e:
             res = {"last_status": "skipped", "last_run_id": None, "last_note": str(getattr(e, "detail", e))[:200]}
