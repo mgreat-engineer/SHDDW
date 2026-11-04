@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import List, Optional
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, UploadFile
+from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
@@ -25,11 +26,12 @@ except ModuleNotFoundError:
     from clerk_auth import clerk_router, require_user
 
 import shadow_browser as sb
+import shadow_hub as hub
+from shadow_hub import HelperOffline, RemoteSession
 from shadow_agent import RunEngine, synthesize_skill, llm_key, MODEL
 
 client = AsyncIOMotorClient(os.environ["MONGO_URL"])
 db = client[os.environ["DB_NAME"]]
-engine = RunEngine(db)
 log = logging.getLogger("shadow")
 
 INDEXES: dict = {
@@ -40,6 +42,9 @@ INDEXES: dict = {
     "memories": [IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="user_created")],
     "permissions": [IndexModel([("user_id", ASCENDING), ("category", ASCENDING)], name="user_cat")],
     "files": [IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="user_created")],
+    "devices": [IndexModel([("token_hash", ASCENDING)], name="token_hash"), IndexModel([("user_id", ASCENDING)], name="user")],
+    "pair_codes": [IndexModel([("code", ASCENDING)], name="code", unique=True)],
+    "user_settings": [IndexModel([("user_id", ASCENDING)], name="user", unique=True)],
 }
 
 
@@ -52,6 +57,7 @@ async def ensure_indexes():
                 log.error("ensure_indexes(%s): %s", col, exc)
 
 
+engine = RunEngine(db, None)
 app = FastAPI()
 api = APIRouter(prefix="/api")
 ACTIVE = ["running", "awaiting_approval", "waiting_input", "paused"]
@@ -66,10 +72,39 @@ def need_key():
         raise HTTPException(400, "Add your OpenAI key first")
 
 
-async def session(uid):
+async def target_of(uid):
+    doc = await db.user_settings.find_one({"user_id": uid}, {"_id": 0})
+    return (doc or {}).get("target", "cloud")
+
+
+async def resolve_session(uid, target):
+    if target == "laptop":
+        conn = hub.get(uid)
+        if not conn:
+            raise HelperOffline("Laptop helper is offline")
+        return RemoteSession(conn)
     s = await sb.get_session(uid, db)
     s.touch()
     return s
+
+
+async def session(uid, target=None):
+    try:
+        return await resolve_session(uid, target or await target_of(uid))
+    except HelperOffline:
+        raise HTTPException(409, "Your laptop helper is offline. Open Shadow Helper on your laptop, or switch to Cloud.")
+
+
+async def bcall(coro, code=400):
+    """Await a browser call, turning browser/helper errors into clean HTTP errors."""
+    try:
+        return await coro
+    except HTTPException:
+        raise
+    except HelperOffline:
+        raise HTTPException(409, "Your laptop helper went offline.")
+    except Exception as e:
+        raise HTTPException(code, str(e)[:250])
 
 
 async def active_run(uid):
@@ -119,19 +154,21 @@ async def take_over(uid, s):
     run = await active_run(uid)
     if run and run["status"] == "running":
         await db.runs.update_one({"id": run["id"]}, {"$set": {"status": "paused", "paused_by": "takeover"}})
-        s.correction_sink = []
+        await s.corrections_start()
 
 
 @api.get("/browser/state")
 async def browser_state(uid: str = Depends(uid_of)):
     s = await session(uid)
-    return await s.state()
+    st = await bcall(s.state(), 503)
+    st["target"] = await target_of(uid)
+    return st
 
 
 @api.get("/browser/frame")
 async def browser_frame(uid: str = Depends(uid_of)):
     s = await session(uid)
-    data = await s.frame()
+    data = await bcall(s.frame(), 503)
     if not data:
         raise HTTPException(503, "No frame yet")
     return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
@@ -141,24 +178,7 @@ async def browser_frame(uid: str = Depends(uid_of)):
 async def browser_input(body: InputIn, uid: str = Depends(uid_of)):
     s = await session(uid)
     await take_over(uid, s)
-    page = await s.ensure_page()
-    if s.pending_dialog:
-        raise HTTPException(409, "Answer the page dialog first")
-    acts = {
-        "click": lambda: page.mouse.click(body.x, body.y),
-        "dblclick": lambda: page.mouse.dblclick(body.x, body.y),
-        "type": lambda: page.keyboard.type(body.text or ""),
-        "key": lambda: page.keyboard.press(body.key),
-        "scroll": lambda: page.mouse.wheel(0, body.dy or 0),
-    }
-    if body.kind not in acts:
-        raise HTTPException(400, "Unknown input")
-    try:
-        if body.kind == "scroll":
-            await page.mouse.move(body.x or 640, body.y or 400)
-        await s.run_guarded(acts[body.kind](), timeout=15)
-    except Exception as e:
-        raise HTTPException(409, f"Browser busy: {str(e)[:200]}")
+    await bcall(s.input(kind=body.kind, x=body.x, y=body.y, text=body.text, key=body.key, dy=body.dy), 409)
     return {"ok": True}
 
 
@@ -166,49 +186,27 @@ async def browser_input(body: InputIn, uid: str = Depends(uid_of)):
 async def browser_navigate(body: UrlIn, uid: str = Depends(uid_of)):
     s = await session(uid)
     await take_over(uid, s)
-    try:
-        await s.navigate(body.url)
-    except Exception as e:
-        raise HTTPException(400, f"Could not open page: {str(e)[:200]}")
+    await bcall(s.navigate(url=body.url))
     return {"ok": True}
 
 
 @api.post("/browser/nav")
 async def browser_nav(body: NavIn, uid: str = Depends(uid_of)):
     s = await session(uid)
-    page = await s.ensure_page()
-    fn = {"back": page.go_back, "forward": page.go_forward, "reload": page.reload}.get(body.action)
-    if not fn:
-        raise HTTPException(400, "Unknown action")
-    with suppress(Exception):
-        await fn(timeout=15000)
+    await bcall(s.nav(action=body.action))
     return {"ok": True}
 
 
 @api.post("/browser/tabs")
 async def browser_tabs(body: TabIn, uid: str = Depends(uid_of)):
     s = await session(uid)
-    try:
-        if body.action == "new":
-            await s.new_tab(body.url or "https://www.google.com")
-        elif body.action == "switch":
-            await s.switch_tab(body.index)
-        elif body.action == "close":
-            await s.close_tab(body.index)
-        else:
-            raise HTTPException(400, "Unknown action")
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    return await s.state()
+    return await bcall(s.tabs(action=body.action, index=body.index, url=body.url))
 
 
 @api.post("/browser/dialog")
 async def browser_dialog(body: DialogIn, uid: str = Depends(uid_of)):
     s = await session(uid)
-    try:
-        await s.resolve_dialog(body.accept, body.text or "")
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    await bcall(s.resolve_dialog(accept=body.accept, text=body.text or ""))
     return {"ok": True}
 
 
@@ -216,13 +214,16 @@ async def browser_dialog(body: DialogIn, uid: str = Depends(uid_of)):
 async def browser_chooser(body: ChooserIn, uid: str = Depends(uid_of)):
     s = await session(uid)
     if body.cancel:
-        s.cancel_chooser()
-        return {"ok": True}
-    try:
-        await s.upload(body.file_names)
-    except Exception as e:
-        raise HTTPException(400, str(e)[:200])
+        await bcall(s.cancel_chooser())
+    else:
+        await bcall(s.upload(file_names=body.file_names))
     return {"ok": True}
+
+
+@api.get("/target/files")
+async def target_files(uid: str = Depends(uid_of)):
+    s = await session(uid)
+    return await bcall(s.files_list())
 
 
 # ---------------- recording ----------------
@@ -236,27 +237,21 @@ async def record_start(uid: str = Depends(uid_of)):
     if run and run["status"] == "running":
         raise HTTPException(409, "Shadow is running a task. Pause or stop it first.")
     s = await session(uid)
-    s.recording = []
-    page = s.page()
-    if page:
-        s.capture({"kind": "navigate", "url": page.url})
+    await bcall(s.record_start())
     return {"ok": True}
 
 
 @api.post("/record/note")
 async def record_note(body: NoteIn, uid: str = Depends(uid_of)):
     s = await session(uid)
-    if s.recording is None:
-        raise HTTPException(400, "Not recording")
-    s.capture({"kind": "note", "text": body.text})
+    await bcall(s.record_note(text=body.text))
     return {"ok": True}
 
 
 @api.post("/record/stop")
 async def record_stop(uid: str = Depends(uid_of)):
     s = await session(uid)
-    events, s.recording = s.recording or [], None
-    return {"events": events}
+    return {"events": await bcall(s.record_stop())}
 
 
 class SynthIn(BaseModel):
@@ -346,8 +341,9 @@ async def runs_create(body: RunIn, uid: str = Depends(uid_of)):
         if cur["status"] == "waiting_input" and body.command:
             return await runs_reply(cur["id"], ReplyIn(text=body.command), uid)
         raise HTTPException(409, "A task is already in progress. Finish, stop or resume it first.")
-    s = await session(uid)
-    if s.recording is not None:
+    target = await target_of(uid)
+    s = await session(uid, target)
+    if (await bcall(s.state(), 409)).get("recording"):
         raise HTTPException(409, "Stop recording first")
     skill = None
     if body.skill_id:
@@ -361,10 +357,10 @@ async def runs_create(body: RunIn, uid: str = Depends(uid_of)):
     run = {"id": str(uuid.uuid4()), "user_id": uid, "goal": goal, "skill_id": skill["id"] if skill else None,
            "skill_name": skill["name"] if skill else None, "loaded_skills": [skill["id"]] if skill else [],
            "status": "running", "plan": [], "scratch": {}, "messages": [], "corrections": [], "pending": None,
-           "step_count": 0, "summary": "", "created_at": now, "updated_at": now}
+           "step_count": 0, "summary": "", "target": target, "created_at": now, "updated_at": now}
     await db.runs.insert_one(run)
     run.pop("_id", None)
-    s.events.clear()
+    await bcall(s.clear_events())
     engine.start(run["id"], uid)
     return run
 
@@ -440,7 +436,8 @@ async def runs_pause(rid: str, uid: str = Depends(uid_of)):
     if run["status"] != "running":
         raise HTTPException(400, "Not running")
     await db.runs.update_one({"id": rid}, {"$set": {"status": "paused"}})
-    (await session(uid)).correction_sink = []
+    s = await session(uid, run.get("target", "cloud"))
+    await bcall(s.corrections_start())
     return {"ok": True}
 
 
@@ -450,10 +447,9 @@ async def runs_resume(rid: str, uid: str = Depends(uid_of)):
     run = await get_run(rid, uid)
     if run["status"] not in ("paused", "failed", "stopped"):
         raise HTTPException(400, "Cannot resume")
-    s = await session(uid)
-    corr = [e["desc"] for e in (s.correction_sink or [])]
-    s.correction_sink = None
-    s.events.clear()
+    s = await session(uid, run.get("target", "cloud"))
+    corr = await bcall(s.corrections_take())
+    await bcall(s.clear_events())
     upd = {"$set": {"status": "running", "pending": None}}
     if corr:
         upd["$push"] = {"corrections": {"$each": corr[-60:]}}
@@ -468,7 +464,9 @@ async def runs_stop(rid: str, uid: str = Depends(uid_of)):
     if run["status"] not in ACTIVE:
         raise HTTPException(400, "Not active")
     await db.runs.update_one({"id": rid}, {"$set": {"status": "stopped", "pending": None, "summary": run.get("summary") or "Stopped by you."}})
-    (await session(uid)).correction_sink = None
+    with suppress(Exception):
+        s = await resolve_session(uid, run.get("target", "cloud"))
+        await s.corrections_take()
     return {"ok": True}
 
 
@@ -605,6 +603,119 @@ async def voice(file: UploadFile = File(...), uid: str = Depends(uid_of)):
         os.unlink(path)
 
 
+# ---------------- laptop helper (desktop app) ----------------
+class TargetIn(BaseModel):
+    target: str
+
+
+class PairIn(BaseModel):
+    code: str
+    name: Optional[str] = "My laptop"
+
+
+def _device_out(d):
+    conn = hub.get(d["user_id"])
+    online = bool(conn and conn.device["id"] == d["id"])
+    return {"id": d["id"], "name": d.get("name"), "created_at": d.get("created_at"), "last_seen": d.get("last_seen"),
+            "online": online, "info": (conn.info if online else d.get("info")) or {}}
+
+
+@api.get("/target")
+async def target_get(uid: str = Depends(uid_of)):
+    conn = hub.get(uid)
+    return {"target": await target_of(uid), "helper_online": bool(conn),
+            "helper": {"name": conn.device.get("name"), "info": conn.info} if conn else None}
+
+
+@api.put("/target")
+async def target_put(body: TargetIn, uid: str = Depends(uid_of)):
+    if body.target not in ("cloud", "laptop"):
+        raise HTTPException(400, "Unknown target")
+    if body.target == "laptop" and not hub.get(uid):
+        raise HTTPException(409, "Your laptop helper is offline.")
+    if await active_run(uid):
+        raise HTTPException(409, "Finish or stop the current task before switching.")
+    await db.user_settings.update_one({"user_id": uid}, {"$set": {"target": body.target}}, upsert=True)
+    return await target_get(uid)
+
+
+@api.post("/devices/pair-code")
+async def devices_pair_code(uid: str = Depends(uid_of)):
+    import secrets
+    code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(8))
+    exp = datetime.now(timezone.utc) + timedelta(minutes=15)
+    await db.pair_codes.insert_one({"code": code, "user_id": uid, "expires_at": exp.isoformat()})
+    return {"code": code, "expires_at": exp.isoformat()}
+
+
+@api.get("/devices")
+async def devices_list(uid: str = Depends(uid_of)):
+    docs = await db.devices.find({"user_id": uid, "revoked": {"$ne": True}}, {"_id": 0, "token_hash": 0}).sort("created_at", -1).to_list(20)
+    return [_device_out(d) for d in docs]
+
+
+@api.delete("/devices/{did}")
+async def devices_revoke(did: str, uid: str = Depends(uid_of)):
+    r = await db.devices.update_one({"id": did, "user_id": uid}, {"$set": {"revoked": True}})
+    if not r.matched_count:
+        raise HTTPException(404, "Not found")
+    conn = hub.get(uid)
+    if conn and conn.device["id"] == did:
+        with suppress(Exception):
+            await conn.ws.close(code=4401)
+        hub.unregister(uid, conn)
+        await db.user_settings.update_one({"user_id": uid}, {"$set": {"target": "cloud"}}, upsert=True)
+    return {"ok": True}
+
+
+@api.post("/helper/pair")
+async def helper_pair(body: PairIn):
+    import secrets
+    pc = await db.pair_codes.find_one_and_delete({"code": body.code.strip().upper()})
+    if not pc or pc["expires_at"] < sb.now_iso():
+        raise HTTPException(400, "This connection code is wrong or expired. Get a new one in Shadow.")
+    token = secrets.token_urlsafe(32)
+    dev = {"id": str(uuid.uuid4()), "user_id": pc["user_id"], "name": (body.name or "My laptop")[:60],
+           "token_hash": hub.hash_token(token), "created_at": sb.now_iso(), "last_seen": sb.now_iso()}
+    await db.devices.insert_one(dev)
+    return {"token": token, "device_id": dev["id"], "name": dev["name"]}
+
+
+@app.websocket("/api/helper/ws")
+async def helper_ws(ws: WebSocket, token: str = ""):
+    dev = await db.devices.find_one({"token_hash": hub.hash_token(token), "revoked": {"$ne": True}}, {"_id": 0})
+    if not dev:
+        await ws.close(code=4401)
+        return
+    await ws.accept()
+    uid = dev["user_id"]
+    conn = hub.HelperConn(ws, dev)
+    old = hub.register(uid, conn)
+    if old:
+        old.fail_all()
+        with suppress(Exception):
+            await old.ws.close(code=4000)
+    first = not await db.user_settings.find_one({"user_id": uid})
+    if first and not await active_run(uid):
+        await db.user_settings.update_one({"user_id": uid}, {"$set": {"target": "laptop"}}, upsert=True)
+    await db.devices.update_one({"id": dev["id"]}, {"$set": {"last_seen": sb.now_iso()}})
+    try:
+        while True:
+            msg = await ws.receive_json()
+            if "id" in msg:
+                conn.resolve(msg)
+            elif msg.get("event") == "hello":
+                conn.info = msg.get("info") or {}
+                await db.devices.update_one({"id": dev["id"]}, {"$set": {"info": conn.info, "last_seen": sb.now_iso()}})
+    except (WebSocketDisconnect, Exception):
+        pass
+    finally:
+        hub.unregister(uid, conn)
+        conn.fail_all()
+        await db.devices.update_one({"id": dev["id"]}, {"$set": {"last_seen": sb.now_iso()}})
+
+
+engine.resolver = resolve_session
 app.include_router(api)
 app.include_router(clerk_router)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),

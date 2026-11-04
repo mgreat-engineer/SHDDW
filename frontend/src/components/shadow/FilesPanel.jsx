@@ -5,7 +5,25 @@ import { useApi, errMsg, fmtSize, fmtTime, saveBlob } from "@/lib/api";
 
 const SRC = { download: "text-[#00F0FF]", upload: "text-slate-400", generated: "text-[#00E676]" };
 
-export default function FilesPanel({ refresh }) {
+function LaptopFiles({ api }) {
+  const [files, setFiles] = useState([]);
+  useEffect(() => { api.get("/target/files").then((r) => setFiles(r.data)).catch(() => {}); }, [api]);
+  return (
+    <div className="space-y-1.5" data-testid="laptop-files">
+      <p className="text-[10px] font-mono uppercase tracking-widest text-slate-500">On your laptop (allowed folders)</p>
+      {files.length === 0 && <p className="text-xs text-slate-500">No files in your allowed folders yet.</p>}
+      {files.map((f) => (
+        <div key={f.name} className="flex items-center gap-2 rounded-md bg-[#181B26] border border-[#262B3D] px-3 py-2" data-testid={`laptop-file-${f.name}`}>
+          <p className="text-xs truncate flex-1 font-mono" title={f.name}>{f.name}</p>
+          <span className="text-[10px] font-mono text-slate-500">{fmtSize(f.size)}</span>
+        </div>
+      ))}
+      <p className="text-[10px] text-slate-500 pt-1">Downloads are saved straight into your chosen folder. Cloud files below are used only when Shadow works in the cloud.</p>
+    </div>
+  );
+}
+
+export default function FilesPanel({ refresh, target }) {
   const api = useApi();
   const [files, setFiles] = useState([]);
   const [drag, setDrag] = useState(false);
@@ -23,6 +41,7 @@ export default function FilesPanel({ refresh }) {
 
   return (
     <div className="space-y-3" data-testid="files-panel">
+      {target?.target === "laptop" && target?.helper_online && <LaptopFiles api={api} key={refresh} />}
       <label onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files); }}
         className={`flex flex-col items-center justify-center gap-1.5 py-6 rounded-lg border border-dashed cursor-pointer transition-colors ${drag ? "border-[#00F0FF] bg-[#00F0FF]/10" : "border-[#262B3D] hover:border-[#00F0FF]/40"}`} data-testid="files-dropzone">
         <UploadCloud className="h-5 w-5 text-slate-400" />

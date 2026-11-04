@@ -8,7 +8,8 @@ from pathlib import Path
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
-from shadow_browser import get_session, user_dir, now_iso, safe_name
+from shadow_browser import user_dir, now_iso
+from shadow_hub import HelperOffline
 
 log = logging.getLogger("shadow.agent")
 MODEL = ("openai", "gpt-5.5")
@@ -120,9 +121,14 @@ Return {{"steps": [...updated plain-language steps so next time it is done the u
 
 
 # ---------------- run engine ----------------
+BROWSER_TOOLS = {"navigate", "click", "click_at", "type_text", "select_option", "press_key", "scroll", "hover", "go_back",
+                 "new_tab", "switch_tab", "close_tab", "read_page", "upload_file", "handle_dialog"}
+
+
 class RunEngine:
-    def __init__(self, db):
+    def __init__(self, db, resolver):
         self.db = db
+        self.resolver = resolver
 
     def start(self, run_id: str, user_id: str):
         t = _tasks.get(run_id)
@@ -142,7 +148,7 @@ class RunEngine:
         await self.db.run_steps.insert_one({
             "id": str(uuid.uuid4()), "run_id": run["id"], "user_id": run["user_id"], "idx": idx,
             "action": action, "args": args, "reason": reason, "result": str(result)[:1500], "ok": ok,
-            "has_shot": bool(shot), "url": sess.page().url if sess.page() else "", "created_at": now_iso()})
+            "has_shot": bool(shot), "url": await sess.current_url(), "created_at": now_iso()})
         run["step_count"] = idx
         await self._set(run["id"], step_count=idx)
 
@@ -157,14 +163,14 @@ class RunEngine:
         memories = await self.db.memories.find({"user_id": uid}, {"_id": 0}).sort("created_at", -1).to_list(60)
         skills = await self.db.skills.find({"user_id": uid}, {"_id": 0}).to_list(200)
         perms = await self.db.permissions.find({"user_id": uid}, {"_id": 0}).to_list(50)
-        files = await self.db.files.find({"user_id": uid}, {"_id": 0, "name": 1}).sort("created_at", -1).to_list(80)
         recent = await self.db.run_steps.find({"run_id": run["id"]}, {"_id": 0}).sort("idx", -1).to_list(25)
-        return memories, skills, perms, files, list(reversed(recent))
+        return memories, skills, perms, list(reversed(recent))
 
     async def _prompt(self, run, sess):
-        memories, skills, perms, files, recent = await self._context(run)
+        memories, skills, perms, recent = await self._context(run)
+        files = (await sess.files_list())[:80]
         loaded = [s for s in skills if s["id"] in run.get("loaded_skills", [])]
-        page = sess.page()
+        url = await sess.current_url()
         st = await sess.state()
         els = await sess.elements()
         el_lines = "\n".join(
@@ -176,8 +182,7 @@ class RunEngine:
         plan = "\n".join(f'[{ {"done": "x", "active": ">", "skipped": "-"}.get(p["status"], " ") }] {p["title"]}' for p in run.get("plan", [])) or "(no plan yet)"
         acts = "\n".join(f'#{s["idx"]} {s["action"]}({json.dumps(s["args"])[:200]}) -> {s["result"][:300]}' for s in recent) or "(none yet)"
         tabs = "\n".join(f'{"*" if t["active"] else " "} tab {t["index"]}: {t["title"][:60]} — {t["url"][:120]}' for t in st["tabs"])
-        events = "\n".join(sess.events[-8:]) or "(none)"
-        sess.events.clear()
+        events = "\n".join(await sess.take_events()) or "(none)"
         dialog = f'PENDING DIALOG ({st["dialog"]["type"]}): "{st["dialog"]["message"]}"' if st["dialog"] else ""
         chooser = "FILE PICKER IS OPEN — use upload_file." if st["file_chooser"] else ""
         msgs = "\n".join(f"- {m}" for m in run.get("messages", [])) or "(none)"
@@ -211,7 +216,7 @@ BROWSER EVENTS SINCE LAST STEP:
 {chooser}
 TABS:
 {tabs}
-CURRENT URL: {page.url if page else ''}
+CURRENT URL: {url}
 
 INTERACTIVE ELEMENTS:
 {el_lines}
@@ -230,66 +235,14 @@ Call exactly one tool."""
         tc = resp.tool_calls[0]
         return tc.name, dict(tc.arguments or {})
 
-    async def _loc_click(self, sess, element_id):
-        page = sess.page()
-        loc = page.locator(f'[data-shadow-id="{element_id}"]').first
-        await loc.click(timeout=6000)
-
     async def _execute(self, run, sess, name, a):
-        page = await sess.ensure_page()
         uid = run["user_id"]
-        if name == "navigate":
-            await sess.navigate(a["url"])
-        elif name == "click":
-            await self._loc_click(sess, a["element_id"])
-        elif name == "click_at":
-            await page.mouse.click(int(a["x"]), int(a["y"]))
-        elif name == "type_text":
-            loc = page.locator(f'[data-shadow-id="{a["element_id"]}"]').first
-            await loc.click(timeout=6000)
-            if a.get("clear", True):
-                await page.keyboard.press("Control+A")
-                await page.keyboard.press("Backspace")
-            await page.keyboard.type(a["text"], delay=15)
-            if a.get("press_enter"):
-                await page.keyboard.press("Enter")
-        elif name == "select_option":
-            loc = page.locator(f'[data-shadow-id="{a["element_id"]}"]').first
-            try:
-                await loc.select_option(label=a["option"], timeout=5000)
-            except Exception:
-                await loc.select_option(value=a["option"], timeout=5000)
-        elif name == "press_key":
-            await page.keyboard.press(a["key"])
-        elif name == "scroll":
-            amt = int(a.get("amount") or 1)
-            await page.mouse.wheel(0, (600 if a["direction"] == "down" else -600) * amt)
-        elif name == "hover":
-            await page.locator(f'[data-shadow-id="{a["element_id"]}"]').first.hover(timeout=5000)
-        elif name == "go_back":
-            await page.go_back(timeout=15000)
-        elif name == "new_tab":
-            await sess.new_tab(a.get("url", ""))
-        elif name == "switch_tab":
-            await sess.switch_tab(int(a["index"]))
-        elif name == "close_tab":
-            await sess.close_tab(int(a["index"]))
-        elif name == "read_page":
-            return await sess.page_text()
-        elif name == "upload_file":
-            await sess.upload(a["file_names"], a.get("element_id"))
-        elif name == "handle_dialog":
-            await sess.resolve_dialog(bool(a["accept"]), a.get("text", ""))
-        elif name == "read_file":
-            return read_user_file(uid, a["file_name"])
+        if name in BROWSER_TOOLS:
+            return await sess.act(name=name, args=a)
+        if name == "read_file":
+            return await sess.file_read(name=a["file_name"])
         elif name == "write_file":
-            fname = safe_name(a["file_name"])
-            p = user_dir(uid, "files") / fname
-            p.write_text(a["content"])
-            await self.db.files.update_one({"user_id": uid, "name": fname}, {"$set": {
-                "size": p.stat().st_size, "source": "generated", "created_at": now_iso()},
-                "$setOnInsert": {"id": str(uuid.uuid4())}}, upsert=True)
-            return f"Saved {fname}"
+            return await sess.file_write(name=a["file_name"], content=a["content"])
         elif name == "update_plan":
             run["plan"] = a["items"]
             await self._set(run["id"], plan=a["items"])
@@ -319,19 +272,17 @@ Call exactly one tool."""
             return f"Standing permission for {a['category']} saved"
         elif name == "wait":
             await asyncio.sleep(min(int(a.get("seconds") or 1), 30))
-        else:
-            return f"Unknown tool {name}"
-        await sess.settle()
-        return "ok"
+            return "ok"
+        return f"Unknown tool {name}"
 
     async def _loop(self, run_id, user_id):
         errors = 0
         try:
-            sess = await get_session(user_id, self.db)
             while True:
                 run = await self.db.runs.find_one({"id": run_id}, {"_id": 0})
                 if not run or run["status"] != "running":
                     return
+                sess = await self.resolver(user_id, run.get("target", "cloud"))
                 if run["step_count"] >= MAX_STEPS:
                     await self._set(run_id, status="failed", summary=f"Stopped after {MAX_STEPS} steps.")
                     return
@@ -363,7 +314,7 @@ Call exactly one tool."""
                         continue
                     if risk in RISKS and not await self._permitted(user_id, risk, run.get("skill_id")):
                         await self._set(run_id, status="awaiting_approval", pending={
-                            "tool": name, "args": args, "reason": reason, "risk": risk, "url": sess.page().url})
+                            "tool": name, "args": args, "reason": reason, "risk": risk, "url": await sess.current_url()})
                         return
                 if name == "finish":
                     await self._step(run, sess, name, args, reason, args.get("summary", ""))
@@ -378,16 +329,17 @@ Call exactly one tool."""
                     return
                 sess.touch()
                 try:
-                    if name == "handle_dialog" or not sess.pending_dialog:
-                        result = await sess.run_guarded(self._execute(run, sess, name, args), timeout=90)
-                    else:
-                        result = "ERROR: a dialog is open — call handle_dialog first"
+                    result = await self._execute(run, sess, name, args)
                     ok = not str(result).startswith("ERROR")
+                except HelperOffline:
+                    raise
                 except Exception as e:
                     result, ok = f"ERROR: {str(e)[:400]}", False
                 await self._step(run, sess, name, args, reason, result, ok)
         except asyncio.CancelledError:
             raise
+        except HelperOffline:
+            await self._set(run_id, status="paused", summary="Your laptop helper went offline. Reopen Shadow Helper, then press Resume.")
         except Exception as e:
             log.exception("run loop crashed")
             await self._set(run_id, status="failed", summary=f"Engine error: {str(e)[:300]}")
@@ -406,22 +358,3 @@ Call exactly one tool."""
                 await self._set(run["id"], learned=data.get("change_note", "Skill updated from your correction"))
         except Exception:
             log.exception("learning failed")
-
-
-def read_user_file(uid, name):
-    p = user_dir(uid, "files") / safe_name(name)
-    if not p.exists():
-        return f"File not found: {name}"
-    if p.suffix.lower() in (".xlsx", ".xlsm"):
-        import openpyxl
-        wb = openpyxl.load_workbook(p, read_only=True, data_only=True)
-        out = []
-        for ws in wb.worksheets:
-            out.append(f"# Sheet {ws.title}")
-            for row in ws.iter_rows(values_only=True):
-                out.append(",".join("" if v is None else str(v) for v in row))
-        return "\n".join(out)[:20000]
-    try:
-        return p.read_text(errors="replace")[:20000]
-    except Exception as e:
-        return f"Cannot read file: {e}"

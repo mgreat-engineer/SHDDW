@@ -4,8 +4,9 @@ import MemoryPanel from "./MemoryPanel";
 import FilesPanel from "./FilesPanel";
 import HistoryPanel from "./HistoryPanel";
 import PermissionsPanel from "./PermissionsPanel";
+import LaptopPanel from "./LaptopPanel";
 
-export default function SidePanel({ panel, refresh, onRunSkill, onSelectRun, selectedRunId }) {
+export default function SidePanel({ panel, refresh, onRunSkill, onSelectRun, selectedRunId, target, onTarget }) {
   const label = PANELS.find((p) => p.id === panel)?.label;
   return (
     <aside className="w-[300px] shrink-0 border-r border-[#262B3D] bg-[#0F111A] flex flex-col relative z-10" data-testid="side-panel">
@@ -16,9 +17,10 @@ export default function SidePanel({ panel, refresh, onRunSkill, onSelectRun, sel
       <div className="flex-1 min-h-0 overflow-y-auto thin-scroll px-4 pb-4">
         {panel === "skills" && <SkillsPanel refresh={refresh} onRun={onRunSkill} />}
         {panel === "memory" && <MemoryPanel />}
-        {panel === "files" && <FilesPanel refresh={refresh} />}
+        {panel === "files" && <FilesPanel refresh={refresh} target={target} />}
         {panel === "history" && <HistoryPanel refresh={refresh} onSelect={onSelectRun} selectedId={selectedRunId} />}
         {panel === "permissions" && <PermissionsPanel refresh={refresh} />}
+        {panel === "laptop" && <LaptopPanel refresh={refresh} target={target} onTarget={onTarget} />}
       </div>
     </aside>
   );

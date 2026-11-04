@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useApi, errMsg } from "@/lib/api";
 import DialogBar from "./DialogBar";
 import FileChooserDialog from "./FileChooserDialog";
+import { TargetToggle } from "./LaptopPanel";
 
 const SPECIAL = new Set(["Enter", "Backspace", "Tab", "Escape", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
 const MODE = {
@@ -48,7 +49,7 @@ function TabStrip({ tabs, onTab }) {
   );
 }
 
-export default function BrowserView({ mode, state, onState, onTakeOver }) {
+export default function BrowserView({ mode, state, onState, onTakeOver, target, onTarget }) {
   const api = useApi();
   const src = useFrame(api);
   const imgRef = useRef(null);
@@ -100,6 +101,7 @@ export default function BrowserView({ mode, state, onState, onTakeOver }) {
           <input data-testid="browser-url-input" value={url} onFocus={() => setEditing(true)} onBlur={() => setEditing(false)} onChange={(e) => setUrl(e.target.value)}
             className="flex-1 bg-transparent outline-none text-sm font-mono text-slate-200" placeholder="Search or enter address" />
         </form>
+        <TargetToggle target={target} onChange={onTarget} />
         <span data-testid="browser-mode-badge" className={`text-[11px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full border ${m.c} ${mode === "recording" ? "rec-pulse" : ""}`}>{m.t}</span>
         {mode === "agent" && (
           <button data-testid="take-over-button" onClick={onTakeOver} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-[#FFB000]/40 text-[#FFB000] hover:bg-[#FFB000]/10 transition-colors"><Hand className="h-3.5 w-3.5" />Take over</button>
@@ -112,7 +114,7 @@ export default function BrowserView({ mode, state, onState, onTakeOver }) {
           <img ref={imgRef} src={src} alt="Live browser" draggable={false} onClick={onClick} onWheel={onWheel} data-testid="browser-frame-image"
             className="max-w-full max-h-full select-none cursor-crosshair rounded-md shadow-xl" />
         ) : (
-          <p className="text-sm font-mono text-slate-500 animate-pulse" data-testid="browser-loading">Starting Shadow's Chrome…</p>
+          <p className="text-sm font-mono text-slate-500 animate-pulse" data-testid="browser-loading">{target?.target === "laptop" && !target?.helper_online ? "Your laptop helper is offline — open Shadow Helper or switch to Cloud" : "Starting Shadow's Chrome…"}</p>
         )}
       </div>
       <FileChooserDialog open={!!state?.file_chooser} onDone={loadState} />

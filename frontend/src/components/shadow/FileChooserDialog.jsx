@@ -9,7 +9,7 @@ export default function FileChooserDialog({ open, onDone }) {
   const api = useApi();
   const [files, setFiles] = useState([]);
   const [picked, setPicked] = useState([]);
-  const load = () => api.get("/files").then((r) => setFiles(r.data)).catch(() => {});
+  const load = () => api.get("/target/files").then((r) => setFiles(r.data)).catch(() => {});
   useEffect(() => { if (open) { load(); setPicked([]); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fromComputer = async (e) => {
@@ -35,7 +35,7 @@ export default function FileChooserDialog({ open, onDone }) {
         <div className="max-h-64 overflow-y-auto thin-scroll space-y-1">
           {files.length === 0 && <p className="text-sm text-slate-500">No files yet.</p>}
           {files.map((f) => (
-            <label key={f.id} className="flex items-center gap-3 px-2 py-2 rounded hover:bg-white/5 cursor-pointer" data-testid={`file-chooser-item-${f.id}`}>
+            <label key={f.name} className="flex items-center gap-3 px-2 py-2 rounded hover:bg-white/5 cursor-pointer" data-testid={`file-chooser-item-${f.name}`}>
               <Checkbox checked={picked.includes(f.name)} onCheckedChange={() => toggle(f.name)} />
               <span className="text-sm flex-1 truncate">{f.name}</span>
               <span className="text-xs font-mono text-slate-500">{fmtSize(f.size)}</span>

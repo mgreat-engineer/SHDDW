@@ -110,10 +110,74 @@ async def get_playwright():
         return _pw
 
 
+def read_file_text(p: Path) -> str:
+    if p.suffix.lower() in (".xlsx", ".xlsm"):
+        import openpyxl
+        wb = openpyxl.load_workbook(p, read_only=True, data_only=True)
+        out = []
+        for ws in wb.worksheets:
+            out.append(f"# Sheet {ws.title}")
+            for row in ws.iter_rows(values_only=True):
+                out.append(",".join("" if v is None else str(v) for v in row))
+        return "\n".join(out)[:20000]
+    try:
+        return p.read_text(errors="replace")[:20000]
+    except Exception as e:
+        return f"Cannot read file: {e}"
+
+
+def unique_path(d: Path, name: str) -> Path:
+    target = d / safe_name(name)
+    if target.exists():
+        target = d / f"{target.stem}-{uuid.uuid4().hex[:5]}{target.suffix}"
+    return target
+
+
+class CloudFiles:
+    """Files area stored on the server for one user."""
+    def __init__(self, user_id, db):
+        self.user_id, self.db = user_id, db
+
+    def _dir(self):
+        return user_dir(self.user_id, "files")
+
+    async def list(self):
+        docs = await self.db.files.find({"user_id": self.user_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+        return [{"name": d["name"], "size": d.get("size", 0), "source": d.get("source", "")} for d in docs]
+
+    async def resolve(self, name):
+        p = self._dir() / safe_name(name)
+        if not p.exists():
+            raise ValueError(f"File not found in Files: {name}")
+        return p
+
+    async def download_path(self, suggested):
+        return unique_path(self._dir(), suggested)
+
+    async def _record(self, p: Path, source):
+        await self.db.files.update_one({"user_id": self.user_id, "name": p.name}, {"$set": {
+            "size": p.stat().st_size, "source": source, "created_at": now_iso()},
+            "$setOnInsert": {"id": str(uuid.uuid4())}}, upsert=True)
+
+    async def downloaded(self, p: Path):
+        await self._record(p, "download")
+
+    async def read(self, name):
+        p = self._dir() / safe_name(name)
+        return read_file_text(p) if p.exists() else f"File not found: {name}"
+
+    async def write(self, name, content):
+        p = self._dir() / safe_name(name)
+        p.write_text(content)
+        await self._record(p, "generated")
+        return f"Saved {p.name}"
+
+
 class BrowserSession:
-    def __init__(self, user_id: str, db):
-        self.user_id = user_id
-        self.db = db
+    def __init__(self, files, profile_dir: Path, launch: dict = None):
+        self.files = files
+        self.profile_dir = Path(profile_dir)
+        self.launch = launch or {}
         self.ctx = None
         self.active = 0
         self.recording = None
@@ -145,7 +209,8 @@ class BrowserSession:
 
     async def start(self):
         pw = await get_playwright()
-        prof = user_dir(self.user_id, "profiles")
+        prof = self.profile_dir
+        prof.mkdir(parents=True, exist_ok=True)
         for f in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
             try:
                 os.unlink(prof / f)
@@ -153,8 +218,7 @@ class BrowserSession:
                 pass
         kwargs = dict(headless=True, viewport=VIEWPORT, accept_downloads=True,
                       args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"])
-        if os.environ.get("CHROME_PATH") and Path(os.environ["CHROME_PATH"]).exists():
-            kwargs["executable_path"] = os.environ["CHROME_PATH"]
+        kwargs.update(self.launch)
         self.ctx = await pw.chromium.launch_persistent_context(str(prof), **kwargs)
         await self.ctx.expose_binding("__shadowRecord", self._on_record)
         await self.ctx.add_init_script(RECORDER_JS)
@@ -228,19 +292,13 @@ class BrowserSession:
         self.push_event("File picker opened (waiting for a file to be chosen)")
 
     async def _on_download(self, download):
-        d = user_dir(self.user_id, "files")
-        name = safe_name(download.suggested_filename)
-        target = d / name
-        if target.exists():
-            target = d / f"{Path(name).stem}-{uuid.uuid4().hex[:5]}{Path(name).suffix}"
         try:
+            target = await self.files.download_path(download.suggested_filename)
             await download.save_as(str(target))
+            await self.files.downloaded(target)
         except Exception as e:
             self.push_event(f"Download failed: {e}")
             return
-        await self.db.files.insert_one({
-            "id": str(uuid.uuid4()), "user_id": self.user_id, "name": target.name,
-            "size": target.stat().st_size, "source": "download", "created_at": now_iso()})
         self.push_event(f"Downloaded file {target.name}")
 
     # ---------- tabs ----------
@@ -340,14 +398,9 @@ class BrowserSession:
             raise ValueError(f"The dialog is no longer open ({str(e)[:80]})")
         self.capture({"kind": "browser", "text": f'{"Accepted" if accept else "Dismissed"} dialog "{dlg.message}"' + (f' with "{text}"' if text else "")})
 
-    async def upload(self, names: list, element_id=None):
-        d = user_dir(self.user_id, "files")
-        paths = []
-        for n in names:
-            p = d / safe_name(n)
-            if not p.exists():
-                raise ValueError(f"File not found in Files: {n}")
-            paths.append(str(p))
+    async def upload(self, file_names: list, element_id=None):
+        names = file_names
+        paths = [str(await self.files.resolve(n)) for n in names]
         if self.pending_chooser:
             chooser, self.pending_chooser = self.pending_chooser, None
             await chooser.set_files(paths)
@@ -357,7 +410,7 @@ class BrowserSession:
             await loc.set_input_files(paths, timeout=8000)
         self.capture({"kind": "browser", "text": f"Uploaded file(s): {', '.join(names)}"})
 
-    def cancel_chooser(self):
+    async def cancel_chooser(self):
         self.pending_chooser = None
 
     # ---------- agent helpers ----------
@@ -377,13 +430,158 @@ class BrowserSession:
         t = re.sub(r"\n\s*\n+", "\n", t)
         return t[:limit]
 
+    # ---------- uniform API (same for cloud and laptop helper) ----------
+    async def current_url(self):
+        p = self.page()
+        return p.url if p else ""
+
+    async def input(self, kind, x=None, y=None, text=None, key=None, dy=None):
+        if self.pending_dialog:
+            raise ValueError("Answer the page dialog first")
+        page = await self.ensure_page()
+        acts = {
+            "click": lambda: page.mouse.click(x, y),
+            "dblclick": lambda: page.mouse.dblclick(x, y),
+            "type": lambda: page.keyboard.type(text or ""),
+            "key": lambda: page.keyboard.press(key),
+            "scroll": lambda: page.mouse.wheel(0, dy or 0),
+        }
+        if kind not in acts:
+            raise ValueError("Unknown input")
+        if kind == "scroll":
+            await page.mouse.move(x or 640, y or 400)
+        await self.run_guarded(acts[kind](), timeout=15)
+        return True
+
+    async def nav(self, action):
+        page = await self.ensure_page()
+        fn = {"back": page.go_back, "forward": page.go_forward, "reload": page.reload}.get(action)
+        if not fn:
+            raise ValueError("Unknown action")
+        try:
+            await fn(timeout=15000)
+        except Exception:
+            pass
+        return True
+
+    async def tabs(self, action, index=None, url=None):
+        if action == "new":
+            await self.new_tab(url or "https://www.google.com")
+        elif action == "switch":
+            await self.switch_tab(index)
+        elif action == "close":
+            await self.close_tab(index)
+        else:
+            raise ValueError("Unknown action")
+        return await self.state()
+
+    async def record_start(self):
+        self.recording = []
+        page = self.page()
+        if page:
+            self.capture({"kind": "navigate", "url": page.url})
+        return True
+
+    async def record_note(self, text):
+        if self.recording is None:
+            raise ValueError("Not recording")
+        self.capture({"kind": "note", "text": text})
+        return True
+
+    async def record_stop(self):
+        events, self.recording = self.recording or [], None
+        return events
+
+    async def corrections_start(self):
+        self.correction_sink = []
+        return True
+
+    async def corrections_take(self):
+        out, self.correction_sink = [e["desc"] for e in (self.correction_sink or [])], None
+        return out
+
+    async def take_events(self):
+        out, self.events = self.events[-8:], []
+        return out
+
+    async def clear_events(self):
+        self.events = []
+        return True
+
+    async def files_list(self):
+        return await self.files.list()
+
+    async def file_read(self, name):
+        return await self.files.read(name)
+
+    async def file_write(self, name, content):
+        return await self.files.write(name, content)
+
+    async def act(self, name, args):
+        if self.pending_dialog and name != "handle_dialog":
+            return "ERROR: a dialog is open — call handle_dialog first"
+        return await self.run_guarded(self._act(name, args or {}), timeout=90)
+
+    async def _act(self, name, a):
+        page = await self.ensure_page()
+
+        def loc():
+            return page.locator(f'[data-shadow-id="{a["element_id"]}"]').first
+        if name == "navigate":
+            await self.navigate(a["url"])
+        elif name == "click":
+            await loc().click(timeout=6000)
+        elif name == "click_at":
+            await page.mouse.click(int(a["x"]), int(a["y"]))
+        elif name == "type_text":
+            await loc().click(timeout=6000)
+            if a.get("clear", True):
+                await page.keyboard.press("Control+A")
+                await page.keyboard.press("Backspace")
+            await page.keyboard.type(a["text"], delay=15)
+            if a.get("press_enter"):
+                await page.keyboard.press("Enter")
+        elif name == "select_option":
+            try:
+                await loc().select_option(label=a["option"], timeout=5000)
+            except Exception:
+                await loc().select_option(value=a["option"], timeout=5000)
+        elif name == "press_key":
+            await page.keyboard.press(a["key"])
+        elif name == "scroll":
+            amt = int(a.get("amount") or 1)
+            await page.mouse.wheel(0, (600 if a["direction"] == "down" else -600) * amt)
+        elif name == "hover":
+            await loc().hover(timeout=5000)
+        elif name == "go_back":
+            await page.go_back(timeout=15000)
+        elif name == "new_tab":
+            await self.new_tab(a.get("url", ""))
+        elif name == "switch_tab":
+            await self.switch_tab(int(a["index"]))
+        elif name == "close_tab":
+            await self.close_tab(int(a["index"]))
+        elif name == "read_page":
+            return await self.page_text()
+        elif name == "upload_file":
+            await self.upload(a["file_names"], a.get("element_id"))
+        elif name == "handle_dialog":
+            await self.resolve_dialog(bool(a["accept"]), a.get("text", ""))
+        else:
+            raise ValueError(f"Unknown browser action {name}")
+        await self.settle()
+        return "ok"
+
 
 async def get_session(user_id: str, db) -> BrowserSession:
     async with _sessions_lock:
         s = _sessions.get(user_id)
         if s and not s.closed:
             return s
-        s = BrowserSession(user_id, db)
+        launch = {}
+        if os.environ.get("CHROME_PATH") and Path(os.environ["CHROME_PATH"]).exists():
+            launch["executable_path"] = os.environ["CHROME_PATH"]
+        s = BrowserSession(CloudFiles(user_id, db), user_dir(user_id, "profiles"), launch)
         await s.start()
         _sessions[user_id] = s
         return s

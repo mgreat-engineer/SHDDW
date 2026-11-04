@@ -24,6 +24,7 @@ export default function Workspace() {
   const [runId, setRunId] = useState(null);
   const [run, setRun] = useState(null);
   const [recorded, setRecorded] = useState(null);
+  const [target, setTarget] = useState(null);
   const [refresh, setRefresh] = useState(0);
   const lastStatus = useRef({});
   const lastActive = useRef(null);
@@ -31,6 +32,14 @@ export default function Workspace() {
   const bump = () => setRefresh((n) => n + 1);
 
   useEffect(() => { api.get("/status").then((r) => setStatus(r.data)).catch(() => {}); }, [api]);
+
+  const loadTarget = useCallback(() => api.get("/target").then((r) => setTarget(r.data)).catch(() => {}), [api]);
+  useEffect(() => { loadTarget(); const t = setInterval(loadTarget, 4000); return () => clearInterval(t); }, [loadTarget]);
+  const changeTarget = async (t) => {
+    if (!t) return loadTarget();
+    try { const r = await api.put("/target", { target: t }); setTarget(r.data); toast.success(t === "laptop" ? "Shadow now works on your laptop" : "Shadow now works in the cloud"); }
+    catch (e) { toast.error(errMsg(e)); }
+  };
 
   const pollActive = useCallback(async () => {
     try {
@@ -82,14 +91,14 @@ export default function Workspace() {
     <div className="h-screen flex bg-[#08090E] text-slate-100 overflow-hidden grain" data-testid="workspace">
       <SideRail panel={panel} setPanel={setPanel} />
       <SidePanel panel={panel} refresh={refresh} onRunSkill={(s) => startRun({ skill_id: s.id, command: "" })}
-        onSelectRun={setRunId} selectedRunId={runId} />
+        onSelectRun={setRunId} selectedRunId={runId} target={target} onTarget={changeTarget} />
       <main className="flex-1 min-w-0 flex flex-col p-3 gap-3 relative z-10">
         {status && !status.openai_configured && (
           <div className="rounded-lg border border-[#FFB000]/40 bg-[#FFB000]/10 text-[#FFB000] text-sm px-4 py-2" data-testid="openai-key-banner">
             OpenAI key not added yet — the browser works, but learning, commands and voice are off until the key is added.
           </div>
         )}
-        <BrowserView mode={mode} onState={setBstate} state={bstate} onTakeOver={() => isRunning && runAction("pause")} />
+        <BrowserView mode={mode} onState={setBstate} state={bstate} onTakeOver={() => isRunning && runAction("pause")} target={target} onTarget={changeTarget} />
         <CommandBar recording={!!bstate?.recording} recorded={bstate?.recorded || []} recordedCount={bstate?.recorded_count || 0}
           waiting={run?.status === "waiting_input"} busy={isRunning} onRun={startRun} onRecorded={setRecorded} />
       </main>
