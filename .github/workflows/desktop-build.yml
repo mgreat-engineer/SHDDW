@@ -3,12 +3,11 @@ name: Build Shadow Helper
 on:
   workflow_dispatch:
   push:
-    tags: ["helper-v*"]
-    paths: ["desktop/**", "backend/shadow_browser.py", ".github/workflows/desktop-build.yml"]
     branches: ["main"]
+    paths: ["desktop/**", "backend/shadow_browser.py", ".github/workflows/desktop-build.yml"]
 
 env:
-  HELPER_VERSION: "1.0.0"
+  HELPER_VERSION: "1.0.${{ github.run_number }}"
 
 jobs:
   build:
@@ -23,6 +22,10 @@ jobs:
           - os: macos-15-intel
             name: mac-intel
     runs-on: ${{ matrix.os }}
+    env:
+      # Signing switches on by itself once these GitHub secrets are added (see desktop/README.md).
+      HAS_MAC_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
+      HAS_WIN_CERT: ${{ secrets.WIN_CERT_PFX != '' }}
     defaults:
       run:
         working-directory: desktop
@@ -36,20 +39,68 @@ jobs:
         shell: bash
         run: |
           cp ../backend/shadow_browser.py shadow_helper/
+          printf '{"version": "%s", "repo": "%s"}' "$HELPER_VERSION" "${{ github.repository }}" > shadow_helper/build_info.json
           pyinstaller --noconfirm --windowed --name ShadowHelper \
             --paths shadow_helper --collect-all playwright --hidden-import openpyxl \
+            --add-data "shadow_helper/build_info.json:." \
             shadow_helper/main.py
+
+      - name: Sign Mac app (only if Apple certificate is set up)
+        if: startsWith(matrix.name, 'mac') && env.HAS_MAC_CERT == 'true'
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          echo "$MACOS_CERT_P12" | base64 --decode > cert.p12
+          security create-keychain -p ci build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p ci build.keychain
+          security import cert.p12 -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
+          codesign --deep --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" dist/ShadowHelper.app
+          rm cert.p12
+      - name: Mac disk image
+        if: startsWith(matrix.name, 'mac')
+        run: |
+          mkdir -p dist-installer
+          hdiutil create -volname "Shadow Helper" -srcfolder dist/ShadowHelper.app -ov -format UDZO dist-installer/ShadowHelper-${{ matrix.name }}.dmg
+      - name: Notarize Mac disk image (only if Apple certificate is set up)
+        if: startsWith(matrix.name, 'mac') && env.HAS_MAC_CERT == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          DMG=dist-installer/ShadowHelper-${{ matrix.name }}.dmg
+          xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "$DMG"
+
+      - name: Sign Windows app (only if certificate is set up)
+        if: matrix.name == 'windows' && env.HAS_WIN_CERT == 'true'
+        shell: pwsh
+        env:
+          WIN_CERT_PFX: ${{ secrets.WIN_CERT_PFX }}
+          WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+        run: |
+          [IO.File]::WriteAllBytes("$PWD\cert.pfx", [Convert]::FromBase64String($env:WIN_CERT_PFX))
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          & $signtool sign /f cert.pfx /p $env:WIN_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\ShadowHelper\ShadowHelper.exe
+          "SIGNTOOL=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Windows installer
         if: matrix.name == 'windows'
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\windows.iss
-      - name: Mac disk image
-        if: startsWith(matrix.name, 'mac')
+      - name: Sign Windows installer (only if certificate is set up)
+        if: matrix.name == 'windows' && env.HAS_WIN_CERT == 'true'
+        shell: pwsh
+        env:
+          WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
         run: |
-          mkdir -p dist-installer
-          hdiutil create -volname "Shadow Helper" -srcfolder dist/ShadowHelper.app -ov -format UDZO dist-installer/ShadowHelper-${{ matrix.name }}.dmg
+          & $env:SIGNTOOL sign /f cert.pfx /p $env:WIN_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist-installer\ShadowHelper-Setup-Windows.exe
+          Remove-Item cert.pfx
       - uses: actions/upload-artifact@v4
         with:
           name: ShadowHelper-${{ matrix.name }}
@@ -64,12 +115,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: out
+          merge-multiple: true
+      - name: Checksums (the helper verifies updates with these)
+        run: cd out && sha256sum * > checksums.txt && cat checksums.txt
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('helper-build-{0}', github.run_number) }}
-          name: Shadow Helper ${{ env.HELPER_VERSION }} (build ${{ github.run_number }})
-          files: out/**/*
+          tag_name: helper-v${{ env.HELPER_VERSION }}
+          name: Shadow Helper ${{ env.HELPER_VERSION }}
+          make_latest: true
+          files: out/*
           body: |
-            Install Shadow Helper, open it, and paste the connection code from Shadow → Laptop panel.
-            Requires Google Chrome. Windows may show "Windows protected your PC" (click More info → Run anyway);
-            on Mac, right-click the app → Open the first time. These builds are not code-signed yet.
+            Install Shadow Helper, open it, and paste the connection code from Shadow → Laptop panel. Requires Google Chrome.
+            Installed helpers update themselves to this version automatically when idle.
+            If this build is not code-signed, Windows may show "Windows protected your PC" (More info → Run anyway) and on Mac right-click the app → Open the first time.

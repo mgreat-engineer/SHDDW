@@ -21,6 +21,21 @@ The builds are not code-signed yet, so the first launch shows a warning:
 - Windows: More info → Run anyway
 - Mac: right-click → Open
 
+## Automatic updates
+Each build on GitHub gets a higher version number (`1.0.<build number>`) and becomes the **latest** Release, along with a `checksums.txt` file. Installed helpers check GitHub every 6 hours, or right away when you press **Check for updates**. A new version is downloaded and checked against `checksums.txt`. It installs once Shadow has had no task activity for 10 minutes, and then the helper restarts itself. This only works when the GitHub project is **public**.
+
+## Turning on code signing later
+The build signs the installers by itself as soon as these **GitHub → Settings → Secrets and variables → Actions** secrets exist. Until then it builds unsigned installers.
+
+| Platform | Secret | What it is |
+|---|---|---|
+| Mac | `MACOS_CERT_P12` | Your "Developer ID Application" certificate exported as .p12, then base64-encoded (`base64 -i cert.p12`) |
+| Mac | `MACOS_CERT_PASSWORD` | Password of that .p12 |
+| Mac | `MACOS_SIGN_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
+| Mac | `APPLE_ID`, `APPLE_APP_PASSWORD`, `APPLE_TEAM_ID` | Apple ID email, an app-specific password from appleid.apple.com, and your Team ID (used for notarization) |
+| Windows | `WIN_CERT_PFX` | Code signing certificate (.pfx), base64-encoded |
+| Windows | `WIN_CERT_PASSWORD` | Password of that .pfx |
+
 ## Run from source (developers)
 ```
 cd desktop && pip install -r requirements.txt

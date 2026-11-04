@@ -13,6 +13,8 @@ Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=lowest
 WizardStyle=modern
+CloseApplications=force
+RestartApplications=no
 
 [Files]
 Source: "..\dist\ShadowHelper\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
@@ -24,3 +26,5 @@ Name: "{userstartup}\Shadow Helper"; Filename: "{app}\ShadowHelper.exe"
 
 [Run]
 Filename: "{app}\ShadowHelper.exe"; Description: "Start Shadow Helper"; Flags: nowait postinstall skipifsilent
+; After a silent self-update, start the new version again
+Filename: "{app}\ShadowHelper.exe"; Flags: nowait runasoriginaluser; Check: WizardSilent

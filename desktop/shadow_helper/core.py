@@ -7,19 +7,22 @@ import os
 import platform
 import shutil
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
 import websockets
 
 from shadow_browser import BrowserSession, read_file_text, unique_path
+from updater import build_info
 
-VERSION = "1.0.0"
+VERSION = build_info().get("version", "0.0.0-dev")
 log = logging.getLogger("shadow.helper")
 
 ALLOWED = {"state", "frame", "input", "nav", "navigate", "tabs", "resolve_dialog", "upload", "cancel_chooser",
            "record_start", "record_note", "record_stop", "corrections_start", "corrections_take", "take_events",
            "clear_events", "elements", "page_text", "act", "current_url", "files_list", "file_read", "file_write"}
+PASSIVE = {"state", "frame", "current_url", "files_list", "take_events", "clear_events"}
 
 
 def app_dir() -> Path:
@@ -209,6 +212,11 @@ class Helper:
         self.ws = None
         self.stop_flag = False
         self.browser_lock = asyncio.Lock()
+        self.last_work = time.time()
+
+    def is_idle(self, secs):
+        recording = bool(self.session and self.session.recording is not None)
+        return not recording and time.time() - self.last_work > secs
 
     def info(self):
         return {"version": VERSION, "os": f"{platform.system()} {platform.release()}", "folders": self.cfg["folders"],
@@ -244,6 +252,8 @@ class Helper:
         try:
             if method not in ALLOWED:
                 raise ValueError(f"Not allowed: {method}")
+            if method not in PASSIVE:
+                self.last_work = time.time()
             s = await self.ensure_browser()
             s.touch()
             res = await getattr(s, method)(**params)

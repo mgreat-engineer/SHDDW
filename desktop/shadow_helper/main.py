@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from core import VERSION, Config, Helper, app_dir, copy_chrome_logins, pair
+from updater import Updater
 
 BG, FG, MUTED, ACCENT = "#0F111A", "#F1F5F9", "#94A3B8", "#00F0FF"
 
@@ -17,14 +18,23 @@ class App:
         self.helper = Helper(self.cfg, on_status=lambda s: root.after(0, self.status.set, s))
         root.title(f"Shadow Helper {VERSION}")
         root.configure(bg=BG)
-        root.geometry("520x560")
+        root.geometry("520x620")
         self.status = tk.StringVar(value="Starting…")
+        self.update_status = tk.StringVar(value=f"Version {VERSION}")
+        self.updater = Updater(self.helper.is_idle, on_status=lambda s: root.after(0, self.update_status.set, s),
+                               before_install=self._before_install)
         self.build()
         threading.Thread(target=self._run_loop, daemon=True).start()
 
     def _run_loop(self):
         asyncio.set_event_loop(self.loop)
+        self.loop.create_task(self.updater.run())
         self.loop.run_until_complete(self.helper.run())
+
+    async def _before_install(self):
+        self.helper.stop_flag = True
+        await self._close_ws()
+        await self.helper.restart_browser()
 
     def submit(self, coro):
         return asyncio.run_coroutine_threadsafe(coro, self.loop)
@@ -70,6 +80,13 @@ class App:
                        bg=BG, fg=FG, selectcolor="#181B26", activebackground=BG, activeforeground=FG).pack(anchor="w")
         ttk.Button(ch, text="Copy my Chrome logins now", command=self.do_copy).pack(anchor="w", pady=4)
         self.label(ch, "Close Google Chrome first so every login can be copied.", 9, MUTED).pack(fill="x")
+
+        up = tk.Frame(self.root, bg=BG)
+        up.grid(row=6, pady=(12, 0), **pad)
+        self.label(up, "Updates", 10, FG, True).pack(fill="x")
+        tk.Label(up, textvariable=self.update_status, bg=BG, fg=MUTED, anchor="w", font=("Helvetica", 9), wraplength=460, justify="left").pack(fill="x")
+        ttk.Button(up, text="Check for updates", command=lambda: self.submit(self.updater.check(force=True))).pack(anchor="w", pady=4)
+        self.label(up, "New versions install on their own when Shadow isn't working on a task.", 9, MUTED).pack(fill="x")
         self.refresh_folders()
 
     def refresh_folders(self):

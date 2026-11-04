@@ -26,7 +26,13 @@ Build a standalone browser like Polar browser with a mind of its own. It learns 
 - Build: .github/workflows/desktop-build.yml (PyInstaller; Inno Setup .exe; .dmg for Apple Silicon and Intel; GitHub Release). Unsigned
 - Tested: iteration_3 (13/13 backend, UI flows) + fixes
 
+## Auto-update + signing-ready builds (2026-06)
+- User choices: keep Mac and Windows unsigned for now; public GitHub repo; auto-install when idle
+- updater.py: checks GitHub Releases latest every 6 hours (or with Check for updates), compares 1.0.<build>, downloads the installer for this OS/CPU, verifies it against checksums.txt, installs after 10 min of no task activity (Windows silent Inno install + relaunch; Mac swaps the .app bundle and relaunches)
+- Workflow: version 1.0.<run_number>, build_info.json baked in, tag helper-v<version>, make_latest, checksums.txt. Signing/notarization steps run only when GitHub secrets exist (MACOS_CERT_P12…, WIN_CERT_PFX…; see desktop/README.md)
+- Tested offline: tests/test_updater.py (version compare, checksum pass/fail, idle gating). The real GitHub build has not run yet
+
 ## Backlog
-- P1: Phase 2 remainder: scheduled skills; code-signing (Windows certificate, Apple notarization) for installers without warnings; helper auto-update
+- P1: Phase 2 remainder: scheduled skills; buy signing certificates (Apple Developer ID $99/yr; Windows certificate or Azure Trusted Signing) and add them as GitHub secrets
 - P1: Move files to object storage for multi-instance production
 - P2: Phase 3 virtual-desktop control of other apps; richer iframe support; parallel runs per user
