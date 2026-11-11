@@ -29,7 +29,8 @@ export default function WorkspaceCards({ finished = {}, groups, max, onOpen, onE
   return (
     <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" data-testid="workspace-cards">
       {groups.map((g, i) => <Card key={g.id} g={g} done={finished[g.id]} i={i} onOpen={onOpen} onEdit={onEdit} onClose={onClose} />)}
-      {groups.length < max && (
+      {!groups.length && [0, 1].map((i) => <div key={i} className="rounded-2xl border border-[#DADCE0] bg-white min-h-[116px] animate-pulse" data-testid="workspace-card-skeleton" />)}
+      {groups.length > 0 && groups.length < max && (
         <button onClick={onNew} data-testid="workspace-card-new"
           className="rounded-2xl border border-dashed border-[#BDC1C6] p-5 flex items-center justify-center gap-2 text-sm text-[#5F6368] hover:border-[#1A73E8] hover:text-[#1A73E8] transition-colors min-h-[116px]">
           <Plus className="h-4 w-4" />New workspace <span className="font-mono text-[10px]">{groups.length}/{max}</span>

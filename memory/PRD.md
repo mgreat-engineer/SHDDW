@@ -104,3 +104,9 @@ Build a standalone browser like Polar browser with a mind of its own. It learns 
 - Clicking a card opens the full browser view (unchanged) with a "Home" back button; loads that workspace's last run. `?solo=1` popouts skip home.
 - Files: components/shadow/HomeScreen.jsx, HomeTaskBox.jsx, WorkspaceCards.jsx; pages/Workspace.jsx (screen state).
 - Tested: iteration_17, iteration_18 (100%).
+
+## 2026-06 — Performance fix
+- /api/browser/groups no longer cold-launches the cloud browser: returns saved workspaces from DB (or default Main) when no live session / laptop offline, then prewarms the cloud browser in background (~10s → ~0.25s).
+- Per-user browser start lock (was global, serialized all users).
+- Workspace page lazy-loaded; home polls runs every 4s (1.5s in browser view); skeleton cards while loading.
+- Tested: iteration_19 (100%).

@@ -1,0 +1,24 @@
+{
+  "summary": "Iteration 19: retest of the performance fix plus regressions. Everything passes. BACKEND (/app/backend/tests/test_iter19_perf.py, 7/7, run serially with -n 0): (1) Right after `supervisorctl restart backend`, GET /api/browser/groups took 0.24-0.26s (before the fix it took about 10s). It returned shadow.a's 3 saved workspaces from the DB, each with a run field. About 15s later /api/browser/state took 0.10s, so the background prewarm worked. The workspace ids from the live browser match the saved ones. (2) Per-user lock: after a restart, shadow.a and shadow.b called /browser/state at the same time on a cold backend. B (1 workspace) finished in 2.7-3.5s while A (3 workspaces) was still starting (6.8-11s). So B did not wait behind A. A cold start is 5.5-9.6s on its own, and B is 1.6-1.8s. (3) Laptop target with the helper offline: /browser/groups returns 200 in 0.14s with a default Main. When saved laptop workspaces exist, it returns them (TEST_laptop_ws). /browser/state still returns 409 as expected. (4) Create, rename and close a workspace are each reflected in the list, and the rename is saved to db.workspaces. (5) Without a token, the endpoint returns 401/403. FRONTEND: Signed-out '/' shows the Landing page and no workspace. Signing in with a ticket after a cold restart showed 'Loading Shadow…', then home-screen at 2.4s. src_pages_Workspace_jsx.chunk.js loads as a separate chunk, so lazy loading works. The first groups response arrived at 2.65s with cards. Clicking the Main card opened the browser view with its tab bar and a live frame in 1.5s. The back button returns home. UI regression: create TEST_UI19 → card appears; rename → TEST_UI19_ren; ran a task from the home task box → card went WORKING → DONE with a 'Task finished' toast; closing removed the card. No page errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home (first paint after sign-in)", "issues": ["For about 200ms before the first /browser/groups response, the home screen shows only the 'New workspace 0/10' card, the workspace picker is empty and the heading is greyed out. A skeleton card would avoid the brief empty, 0/10 look."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter19_perf.py", "/app/test_reports/pytest/iter19.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "groups_list builds the laptop session with `hub.get(uid) and RemoteSession(...)`. If the helper drops between hub.get and groups_list, bcall maps HelperOffline to 409 rather than falling back to saved_groups. This is rare. A try/except that falls back to saved_groups(uid,'laptop') would make polling fully 409-free.",
+    "If the cloud browser can never start (install failure), prewarm is retried on every 2.5s groups poll. The _warming set guards against overlap, so this does not pile up, but it logs a warning every poll. Consider a backoff.",
+    "useGroups still polls /browser/groups every 2.5s on every screen. This is cheap now, but it could match the 4s/1.5s cadence used for runs."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter19_perf.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100%"},
+  "seed_data_creation": "To test laptop mode, temporarily set shadow.b's user_settings target to 'laptop' directly in the DB, and inserted a TEST laptop workspace doc (flagged TEST_). Both were reverted and deleted in a finally block. Created and closed TEST_ws19 (API) and TEST_UI19 (UI, ran 1 completed task) for shadow.b. Both users are back on target=cloud, and their saved workspaces are unchanged (A: Main, CTO WORKSPACE, Scheduled: Example learn more; B: Main).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_iter19_perf.py restarts the backend several times. Run it serially with -n 0. Uids: shadow.a=user_3Lc1a7ouvhi20c6KxYFy1AAwtyj, shadow.b=user_3Lc2oBvUNT3bsqXThUco49EoosW. To test laptop-offline without a helper, set user_settings.target in the DB, because PUT /target refuses laptop while the helper is offline. Clerk tickets work once each."
+}
