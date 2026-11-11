@@ -7,7 +7,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-
+from urllib.parse import parse_qs, quote_plus, urlparse
 from playwright.async_api import async_playwright
 
 log = logging.getLogger("shadow.browser")
@@ -41,6 +41,71 @@ RECORDER_JS = r"""
     if (['Enter', 'Tab', 'Escape'].includes(e.key)) send('key', e.target, {key: e.key, value: e.target && e.target.tagName ? val(e.target) : ''});
   }, true);
   document.addEventListener('submit', e => send('submit', e.target), true);
+})();
+"""
+
+CRED_JS = r"""
+(() => {
+  if (window.__shadowCredInstalled) return; window.__shadowCredInstalled = true;
+  const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 1 && r.height > 1; };
+  let last = 0;
+  const grab = () => {
+    const pw = [...document.querySelectorAll('input[type=password]')].find(e => e.value && vis(e));
+    if (!pw || Date.now() - last < 800) return; last = Date.now();
+    const scope = pw.form || document;
+    const users = [...scope.querySelectorAll('input[type=email],input[type=text],input[type=tel],input:not([type])')]
+      .filter(e => e.value && vis(e) && (e.compareDocumentPosition(pw) & Node.DOCUMENT_POSITION_FOLLOWING));
+    const u = users.length ? users[users.length - 1].value : (sessionStorage.getItem('__shadowUser') || '');
+    try { window.__shadowCred && window.__shadowCred(JSON.stringify({origin: location.origin, username: u, password: pw.value})); } catch (e) {}
+  };
+  const rememberUser = (t) => { if (t && t.tagName === 'INPUT' && /^(email|text|tel)$/.test(t.type || 'text') && t.value && (t.autocomplete || '').includes('username') || (t && t.type === 'email' && t.value)) sessionStorage.setItem('__shadowUser', t.value); };
+  document.addEventListener('submit', grab, true);
+  document.addEventListener('change', e => rememberUser(e.target), true);
+  document.addEventListener('keydown', e => { if (e.key === 'Enter') { rememberUser(e.target); grab(); } }, true);
+  document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('button,input[type=submit],[role=button]'); if (b) grab(); }, true);
+})();
+"""
+
+FILL_JS = r"""
+([username, password]) => {
+  const vis = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e); return r.width > 1 && r.height > 1 && s.visibility !== 'hidden'; };
+  const set = (el, v) => {
+    el.focus();
+    const proto = Object.getPrototypeOf(el);
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v);
+    el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true}));
+  };
+  const pw = [...document.querySelectorAll('input[type=password]')].find(vis);
+  const scope = (pw && pw.form) || document;
+  const cands = [...scope.querySelectorAll('input[type=email],input[type=text],input[type=tel],input:not([type])')].filter(vis)
+    .filter(e => !pw || (e.compareDocumentPosition(pw) & Node.DOCUMENT_POSITION_FOLLOWING));
+  const user = cands.find(e => /user|email|login|account/i.test((e.autocomplete || '') + e.name + e.id + (e.placeholder || ''))) || cands[cands.length - 1];
+  const done = [];
+  if (user && username) { set(user, username); done.push('username'); }
+  if (pw) { set(pw, password); done.push('password'); }
+  return done;
+}
+"""
+
+SELECTION_JS = r"""
+() => {
+  const a = document.activeElement;
+  if (a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && a.type !== 'password')) && a.selectionStart !== a.selectionEnd)
+    return a.value.slice(a.selectionStart, a.selectionEnd);
+  return String(window.getSelection() || '');
+}
+"""
+
+STEALTH_JS = r"""
+(() => {
+  try { Object.defineProperty(Navigator.prototype, 'webdriver', {get: () => undefined}); } catch (e) {}
+  try { if (!window.chrome) window.chrome = {runtime: {}, app: {isInstalled: false}}; } catch (e) {}
+  try { Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']}); } catch (e) {}
+  try { if (!navigator.plugins.length) Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]}); } catch (e) {}
+  try {
+    const q = navigator.permissions && navigator.permissions.query;
+    if (q) navigator.permissions.query = (p) => p && p.name === 'notifications' ? Promise.resolve({state: Notification.permission}) : q.call(navigator.permissions, p);
+  } catch (e) {}
 })();
 """
 
@@ -210,6 +275,7 @@ class Group:
         self.events = []
         self.last_frame = None
         self.viewport = dict(VIEWPORT)
+        self.pending_cred = None
 
     async def set_viewport(self, width, height):
         vp = {"width": max(640, min(int(width), 2560)), "height": max(400, min(int(height), 1600))}
@@ -238,10 +304,60 @@ class Group:
 
     async def attach(self):
         await self.ctx.expose_binding("__shadowRecord", self._on_record)
+        await self.ctx.expose_binding("__shadowCred", self._on_cred)
         await self.ctx.add_init_script(RECORDER_JS)
+        await self.ctx.add_init_script(CRED_JS)
+        if self.b.ua:
+            await self.ctx.add_init_script(STEALTH_JS)
         self.ctx.on("page", self._on_popup)
         for p in self.ctx.pages:
             self.adopt(p)
+
+    async def _on_cred(self, source, payload):
+        import json
+        try:
+            c = json.loads(payload)
+            if c.get("password") and c.get("origin", "").startswith("http"):
+                self.pending_cred = {"origin": c["origin"].lower(), "username": str(c.get("username") or "")[:200], "password": c["password"][:500]}
+        except Exception:
+            return
+
+    async def _apply_ua(self, page):
+        ua = self.b.ua
+        if getattr(page, "_shadow_ua", None):
+            return
+        try:
+            cdp = await self.ctx.new_cdp_session(page)
+            await cdp.send("Network.setUserAgentOverride", {"userAgent": ua["ua"], "acceptLanguage": "en-US,en;q=0.9", "platform": "Linux x86_64",
+                                                             "userAgentMetadata": ua["meta"]})
+            page._shadow_ua = cdp  # keep the session alive: the override lasts only while it is attached
+        except Exception:
+            pass
+
+    async def take_credential(self):
+        c, self.pending_cred = self.pending_cred, None
+        return c
+
+    async def dismiss_credential(self):
+        self.pending_cred = None
+        return True
+
+    async def fill_login(self, username, password):
+        page = await self.ensure_page()
+        done = await asyncio.wait_for(page.evaluate(FILL_JS, [username, password]), 6)
+        if not done:
+            raise ValueError("No login form found on this page")
+        self.capture({"kind": "browser", "text": "Filled saved login" + (f" for {username}" if username else "")})
+        return "Filled " + " and ".join(done)
+
+    async def selection_text(self):
+        page = self.page()
+        if not page:
+            return ""
+        try:
+            return (await asyncio.wait_for(page.evaluate(SELECTION_JS), 3))[:200000]
+        except Exception:
+            return ""
 
     async def _on_record(self, source, payload):
         import json
@@ -301,6 +417,8 @@ class Group:
             page.on("filechooser", self._on_chooser)
             page.on("framenavigated", lambda fr, p=page: self._on_nav(p, fr))
             page.on("close", self._on_page_close)
+            if self.b.ua:
+                asyncio.ensure_future(self._apply_ua(page))
             if self.viewport != VIEWPORT:
                 asyncio.ensure_future(page.set_viewport_size(self.viewport))
         if focus:
@@ -325,6 +443,12 @@ class Group:
             self.pending_chooser = None
         if frame == page.main_frame and frame.url not in ("about:blank", ""):
             self.capture({"kind": "navigate", "url": frame.url})
+        if frame == page.main_frame and "google." in frame.url and "/sorry/" in frame.url:
+            cont = (parse_qs(urlparse(frame.url).query).get("continue") or [""])[0]
+            q = (parse_qs(urlparse(cont).query).get("q") or [""])[0]
+            if q:
+                self.push_event("Google blocked this search as unusual traffic — searched on Bing instead")
+                asyncio.ensure_future(page.goto("https://www.bing.com/search?q=" + quote_plus(q), wait_until="domcontentloaded", timeout=30000))
 
     async def _on_dialog(self, dialog):
         self.pending_dialog = dialog
@@ -371,6 +495,15 @@ class Group:
                 title = ""
             tabs.append({"index": i, "url": p.url, "title": title or p.url, "active": i == self.active})
         dlg = self.pending_dialog
+        cred = self.pending_cred
+        page = self.page()
+        has_pw = False
+        if page and not dlg:
+            try:
+                has_pw = await asyncio.wait_for(page.evaluate("() => !!document.querySelector('input[type=password]')"), 1)
+            except Exception:
+                pass
+        import hashlib
         return {
             "group": {"id": self.id, "name": self.name, "label": self.label},
             "tabs": tabs,
@@ -380,6 +513,9 @@ class Group:
             "dialog": {"type": dlg.type, "message": dlg.message, "default": dlg.default_value} if dlg else None,
             "file_chooser": bool(self.pending_chooser),
             "viewport": self.viewport,
+            "has_password_field": has_pw,
+            "save_password": {"origin": cred["origin"], "username": cred["username"],
+                              "pw_sha": hashlib.sha256(cred["password"].encode()).hexdigest()} if cred else None,
         }
 
     async def frame(self, quality=60):
@@ -451,12 +587,20 @@ class Group:
     async def navigate(self, url: str):
         url = url.strip()
         if not re.match(r"^[a-zA-Z]+:", url):
-            url = ("https://" + url) if ("." in url and " " not in url) else "https://www.google.com/search?q=" + url
+            if "." in url and " " not in url:
+                url = "https://" + url
+            else:
+                url = "https://www.google.com/search?q=" + quote_plus(url)
         page = await self.ensure_page()
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        if "google." in page.url and "/sorry/" in page.url:
+            await self.settle()
 
     async def new_tab(self, url: str = ""):
-        self.adopt(await self.ctx.new_page())
+        page = await self.ctx.new_page()
+        self.adopt(page)
+        if self.b.ua:
+            await self._apply_ua(page)
         if url:
             await self.navigate(url)
 
@@ -527,7 +671,12 @@ class Group:
         p = self.page()
         return p.url if p else ""
 
-    async def input(self, kind, x=None, y=None, text=None, key=None, dy=None):
+    async def _press(self, page, x, y, count, down):
+        await page.mouse.move(x, y)
+        n = max(1, min(int(count or 1), 3))
+        await (page.mouse.down(click_count=n) if down else page.mouse.up(click_count=n))
+
+    async def input(self, kind, x=None, y=None, text=None, key=None, dy=None, count=None):
         if self.pending_dialog:
             raise ValueError("Answer the page dialog first")
         page = await self.ensure_page()
@@ -538,6 +687,8 @@ class Group:
             "key": lambda: page.keyboard.press(key),
             "scroll": lambda: page.mouse.wheel(0, dy or 0),
             "move": lambda: page.mouse.move(x, y),
+            "down": lambda: self._press(page, x, y, count, True),
+            "up": lambda: self._press(page, x, y, count, False),
         }
         if kind not in acts:
             raise ValueError("Unknown input")
@@ -699,6 +850,14 @@ class BrowserSession:
         self.closed = False
         self.last_used = time.time()
         self._extra_lock = asyncio.Lock()
+        self.ua = None
+
+    def _make_ua(self, ver):
+        major = ver.split(".")[0]
+        brands = [{"brand": "Chromium", "version": major}, {"brand": "Google Chrome", "version": major}, {"brand": "Not=A?Brand", "version": "24"}]
+        self.ua = {"ua": f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36",
+                   "meta": {"brands": brands, "fullVersionList": [{**b, "version": ver if b["brand"] != "Not=A?Brand" else "24.0.0.0"} for b in brands],
+                            "fullVersion": ver, "platform": "Linux", "platformVersion": "6.5.0", "architecture": "x86", "model": "", "mobile": False, "bitness": "64"}}
 
     def touch(self):
         self.last_used = time.time()
@@ -718,6 +877,12 @@ class BrowserSession:
         kwargs.update(self.launch)
         return kwargs
 
+    def _ctx_kwargs(self):
+        kw = {"viewport": VIEWPORT, "accept_downloads": True}
+        if self.ua:
+            kw.update(user_agent=self.ua["ua"], locale="en-US", extra_http_headers={"Accept-Language": "en-US,en;q=0.9"})
+        return kw
+
     async def start(self):
         pw = await get_playwright()
         prof = self.profile_dir
@@ -727,11 +892,21 @@ class BrowserSession:
                 os.unlink(prof / f)
             except FileNotFoundError:
                 pass
-        self.ctx = await pw.chromium.launch_persistent_context(str(prof), viewport=VIEWPORT, accept_downloads=True, **self._launch_kwargs())
+        self.ctx = await pw.chromium.launch_persistent_context(str(prof), **self._ctx_kwargs(), **self._launch_kwargs())
         self.ctx.on("close", self._on_ctx_close)
+        try:
+            p0 = self.ctx.pages[0] if self.ctx.pages else await self.ctx.new_page()
+            native = await p0.evaluate("navigator.userAgent")
+            m = re.search(r"HeadlessChrome/([\d.]+)", native)
+            if m:
+                self._make_ua(m.group(1))
+        except Exception as e:
+            log.warning("ua detect: %s", e)
         main = self.groups["1"] = Group(self, "1", "Main", self.ctx)
         await main.attach()
         await main.ensure_page()
+        if self.ua:
+            await asyncio.gather(*[main._apply_ua(p) for p in main.pages()])
         try:
             await main.page().goto("https://www.google.com", wait_until="domcontentloaded", timeout=20000)
         except Exception:
@@ -761,8 +936,7 @@ class BrowserSession:
             raise ValueError(f"You can have up to {MAX_GROUPS} workspaces. Close one first.")
         gid = gid or uuid.uuid4().hex[:8]
         st = self._state_path(gid)
-        ctx = await (await self._extra_browser()).new_context(viewport=VIEWPORT, accept_downloads=True,
-                                                              storage_state=str(st) if st.exists() else None)
+        ctx = await (await self._extra_browser()).new_context(**self._ctx_kwargs(), storage_state=str(st) if st.exists() else None)
         g = Group(self, gid, (name or "").strip()[:40] or f"Workspace {len(self.groups) + 1}", ctx, label)
         self.groups[gid] = g
         await g.attach()
@@ -870,6 +1044,7 @@ async def _can_launch():
     pw = await get_playwright()
     try:
         b = await pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        _install_state["version"] = b.version
         await b.close()
         return True, ""
     except Exception as e:

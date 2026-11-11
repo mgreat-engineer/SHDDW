@@ -28,6 +28,7 @@ except ModuleNotFoundError:
 import shadow_browser as sb
 import shadow_hub as hub
 import shadow_schedule as sched
+import shadow_vault as vault
 
 
 def sched_version(v):
@@ -52,6 +53,8 @@ INDEXES: dict = {
     "user_settings": [IndexModel([("user_id", ASCENDING)], name="user", unique=True)],
     "workspaces": [IndexModel([("user_id", ASCENDING), ("target", ASCENDING)], name="user_target", unique=True)],
     "templates": [IndexModel([("user_id", ASCENDING), ("updated_at", DESCENDING)], name="user_updated")],
+    "bookmarks": [IndexModel([("user_id", ASCENDING), ("url", ASCENDING)], name="user_url", unique=True)],
+    "passwords": [IndexModel([("user_id", ASCENDING), ("origin", ASCENDING), ("username", ASCENDING)], name="user_origin_user", unique=True)],
     "schedules": [IndexModel([("user_id", ASCENDING)], name="user"), IndexModel([("enabled", ASCENDING), ("next_run_at", ASCENDING)], name="due")],
 }
 
@@ -151,6 +154,7 @@ class InputIn(BaseModel):
     text: Optional[str] = None
     key: Optional[str] = None
     dy: Optional[float] = None
+    count: Optional[int] = None
 
 
 class UrlIn(BaseModel):
@@ -189,6 +193,13 @@ async def browser_state(uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
     s = await session(uid, gid=gid)
     st = await bcall(s.state(), 503)
     st["target"] = await target_of(uid)
+    offer = st.pop("save_password", None)
+    if offer and await vault.already_saved(db, uid, offer["origin"], offer["username"], offer["pw_sha"]):
+        await bcall(s.dismiss_credential(), 409)
+        offer = None
+    st["save_password"] = {"origin": offer["origin"], "username": offer["username"]} if offer else None
+    active = next((t for t in st["tabs"] if t["active"]), None)
+    st["saved_logins"] = await vault.logins_for(db, uid, vault.origin_of(active["url"])) if active and st.get("has_password_field") else []
     return st
 
 
@@ -205,8 +216,84 @@ async def browser_frame(uid: str = Depends(uid_of), gid: str = Depends(gid_of), 
 async def browser_input(body: InputIn, uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
     s = await session(uid, gid=gid)
     await take_over(uid, s, gid)
-    await bcall(s.input(kind=body.kind, x=body.x, y=body.y, text=body.text, key=body.key, dy=body.dy), 409)
+    await bcall(s.input(kind=body.kind, x=body.x, y=body.y, text=body.text, key=body.key, dy=body.dy, count=body.count), 409)
     return {"ok": True}
+
+
+@api.get("/browser/selection")
+async def browser_selection(uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    s = await session(uid, gid=gid)
+    return {"text": await bcall(s.selection_text(), 409)}
+
+
+# ---------------- bookmarks ----------------
+class BookmarkIn(BaseModel):
+    url: str
+    title: Optional[str] = ""
+
+
+@api.get("/bookmarks")
+async def bookmarks_list(uid: str = Depends(uid_of)):
+    return await db.bookmarks.find({"user_id": uid}, {"_id": 0, "user_id": 0}).sort("created_at", 1).to_list(300)
+
+
+@api.post("/bookmarks")
+async def bookmarks_add(body: BookmarkIn, uid: str = Depends(uid_of)):
+    url = body.url.strip()
+    if not re.match(r"^https?://", url):
+        raise HTTPException(400, "Only web pages can be bookmarked")
+    if await db.bookmarks.count_documents({"user_id": uid}) >= 300:
+        raise HTTPException(409, "You have 300 bookmarks already")
+    doc = {"id": str(uuid.uuid4()), "user_id": uid, "url": url[:2000], "title": (body.title or url).strip()[:120], "created_at": sb.now_iso()}
+    await db.bookmarks.update_one({"user_id": uid, "url": doc["url"]}, {"$setOnInsert": doc}, upsert=True)
+    return await db.bookmarks.find_one({"user_id": uid, "url": doc["url"]}, {"_id": 0, "user_id": 0})
+
+
+@api.delete("/bookmarks/{bid}")
+async def bookmarks_delete(bid: str, uid: str = Depends(uid_of)):
+    r = await db.bookmarks.delete_one({"id": bid, "user_id": uid})
+    if not r.deleted_count:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
+
+
+# ---------------- saved passwords ----------------
+class OfferIn(BaseModel):
+    action: str
+
+
+@api.get("/passwords")
+async def passwords_list(uid: str = Depends(uid_of)):
+    return await db.passwords.find({"user_id": uid}, {"_id": 0, "id": 1, "origin": 1, "username": 1, "updated_at": 1}).sort("origin", 1).to_list(1000)
+
+
+@api.delete("/passwords/{pid}")
+async def passwords_delete(pid: str, uid: str = Depends(uid_of)):
+    r = await db.passwords.delete_one({"id": pid, "user_id": uid})
+    if not r.deleted_count:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
+
+
+@api.post("/passwords/offer")
+async def passwords_offer(body: OfferIn, uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    s = await session(uid, gid=gid)
+    cred = await bcall(s.take_credential(), 409)
+    if body.action == "save" and cred:
+        await vault.save(db, uid, cred["origin"], cred["username"], cred["password"])
+        return {"saved": True}
+    return {"saved": False}
+
+
+@api.post("/passwords/{pid}/fill")
+async def passwords_fill(pid: str, uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    sec = await vault.secret(db, uid, pid)
+    if not sec:
+        raise HTTPException(404, "Not found")
+    s = await session(uid, gid=gid)
+    if vault.origin_of(await bcall(s.current_url(), 409)) != sec["origin"]:
+        raise HTTPException(400, "This login belongs to a different site")
+    return {"result": await bcall(s.fill_login(username=sec["username"], password=sec["password"]), 409)}
 
 
 @api.post("/browser/navigate")
@@ -1019,7 +1106,7 @@ async def browser_stream(ws: WebSocket, token: str = "", group: str = "1"):
                 if msg.get("kind") != "move":
                     await take_over(uid, s, group)
                 await s.input(kind=msg.get("kind"), x=msg.get("x"), y=msg.get("y"), text=msg.get("text"),
-                              key=msg.get("key"), dy=msg.get("dy"))
+                              key=msg.get("key"), dy=msg.get("dy"), count=msg.get("count"))
             except Exception as e:
                 if msg.get("kind") != "move":
                     await ws.send_json({"type": "error", "detail": str(e)[:200]})

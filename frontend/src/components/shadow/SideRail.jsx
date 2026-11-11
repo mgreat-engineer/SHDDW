@@ -1,5 +1,5 @@
 import { UserButton } from "@clerk/react";
-import { BarChart3, Brain, CalendarClock, FolderOpen, History, LayoutTemplate, Laptop, ShieldCheck, Sparkles } from "lucide-react";
+import { BarChart3, Brain, CalendarClock, FolderOpen, History, KeyRound, LayoutTemplate, Laptop, ShieldCheck, Sparkles } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export const PANELS = [
@@ -10,6 +10,7 @@ export const PANELS = [
   { id: "memory", label: "Memory", icon: Brain },
   { id: "files", label: "Files", icon: FolderOpen },
   { id: "history", label: "Run history", icon: History },
+  { id: "passwords", label: "Passwords", icon: KeyRound },
   { id: "permissions", label: "Permissions", icon: ShieldCheck },
   { id: "laptop", label: "Laptop", icon: Laptop },
 ];

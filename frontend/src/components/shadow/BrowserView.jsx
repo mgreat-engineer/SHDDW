@@ -6,6 +6,9 @@ import DialogBar from "./DialogBar";
 import FileChooserDialog from "./FileChooserDialog";
 import { TargetToggle } from "./LaptopPanel";
 import { useLiveView } from "./useLiveView";
+import BookmarksBar, { StarButton, useBookmarks } from "./BookmarksBar";
+import { KeyButton, SavePasswordBubble } from "./PasswordUI";
+import PageContextMenu from "./PageContextMenu";
 
 const SPECIAL = new Set(["Enter", "Backspace", "Tab", "Escape", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
 const MODE = {
@@ -64,6 +67,8 @@ export default function BrowserView({ mode, state, onState, onTakeOver, target, 
   const queue = useRef(Promise.resolve());
   const [url, setUrl] = useState("");
   const [editing, setEditing] = useState(false);
+  const [menu, setMenu] = useState(null);
+  const bm = useBookmarks(api);
   const active = state?.tabs?.find((t) => t.active);
 
   const loadState = useCallback(async () => {
@@ -82,11 +87,36 @@ export default function BrowserView({ mode, state, onState, onTakeOver, target, 
     const vp = state?.viewport || { width: 1280, height: 800 };
     return { x: Math.round(((e.clientX - r.left) * vp.width) / r.width), y: Math.round(((e.clientY - r.top) * vp.height) / r.height) };
   };
-  const onClick = (e) => { if (mode === "agent") onTakeOver(); e.currentTarget.parentElement.focus(); send({ kind: "click", ...point(e) }); };
-  const onDouble = (e) => send({ kind: "dblclick", ...point(e) });
+  const pressed = useRef(false);
+  const onDown = (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    if (mode === "agent") onTakeOver();
+    screenRef.current?.focus();
+    pressed.current = true;
+    send({ kind: "down", count: e.detail || 1, ...point(e) });
+  };
+  const onUp = (e) => {
+    if (!pressed.current) return;
+    pressed.current = false;
+    send({ kind: "up", count: e.detail || 1, ...point(e) });
+  };
+  const copySelection = async () => {
+    try {
+      const r = await api.get("/browser/selection");
+      if (!r.data.text) return toast("Nothing selected — highlight text on the page first");
+      await navigator.clipboard.writeText(r.data.text);
+      toast.success("Copied to your clipboard");
+    } catch (e) { toast.error(errMsg(e)); }
+  };
+  const pasteText = async () => {
+    try { const t = await navigator.clipboard.readText(); if (t) send({ kind: "type", text: t }); }
+    catch { toast("Use Ctrl+V to paste into the page"); }
+  };
   const onKey = (e) => {
     if (e.target.tagName === "INPUT") return;
     const mod = e.ctrlKey || e.metaKey;
+    if (mod && (e.key === "c" || e.key === "C")) { e.preventDefault(); copySelection(); return; }
     if (e.key.length === 1 && !mod) send({ kind: "type", text: e.key });
     else if (SPECIAL.has(e.key) || (mod && e.key.length === 1)) send({ kind: "key", key: mod ? `Control+${e.key}` : e.key });
     else return;
@@ -101,8 +131,8 @@ export default function BrowserView({ mode, state, onState, onTakeOver, target, 
   };
   const lastMove = useRef(0);
   const onMove = (e) => {
-    if (!live || mode === "agent") return;
-    const n = Date.now(); if (n - lastMove.current < 70) return; lastMove.current = n;
+    if (!live || (mode === "agent" && !pressed.current)) return;
+    const n = Date.now(); if (n - lastMove.current < (pressed.current ? 30 : 70)) return; lastMove.current = n;
     send({ kind: "move", ...point(e) });
   };
   const onPaste = (e) => { const t = e.clipboardData.getData("text"); if (t) { send({ kind: "type", text: t }); e.preventDefault(); } };
@@ -123,6 +153,8 @@ export default function BrowserView({ mode, state, onState, onTakeOver, target, 
           {secure ? <Lock className="h-3.5 w-3.5 shrink-0 text-[#5F6368]" data-testid="browser-secure-icon" /> : <Globe className="h-3.5 w-3.5 shrink-0 text-[#5F6368]" />}
           <input data-testid="browser-url-input" value={url} onFocus={(e) => { setEditing(true); e.target.select(); }} onBlur={() => setEditing(false)} onChange={(e) => setUrl(e.target.value)}
             className="flex-1 min-w-0 bg-transparent outline-none text-sm text-[#202124] placeholder-[#5F6368]" placeholder="Search Google or type a URL" />
+          <KeyButton api={api} logins={state?.saved_logins} />
+          <StarButton bm={bm} url={active?.url} title={active?.title} />
         </form>
         {m && <span data-testid="browser-mode-badge" className={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-full border ${m.c} ${mode === "recording" ? "rec-pulse" : ""}`}>{m.t}</span>}
         {mode === "agent" && (
@@ -136,16 +168,21 @@ export default function BrowserView({ mode, state, onState, onTakeOver, target, 
           {!layout.noLeft && <ToolBtn testId="toggle-workspace-bar" title={layout.bar ? "Full screen browser" : "Exit full screen"} onClick={layout.toggleBar}>{layout.bar ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}</ToolBtn>}
         </>}
       </div>
+      <BookmarksBar bm={bm} onOpen={(u) => call("/browser/navigate", { url: u })} />
       <DialogBar dialog={state?.dialog} onDone={loadState} />
+      <SavePasswordBubble api={api} offer={state?.save_password} onDone={loadState} />
       <div ref={screenRef} tabIndex={0} onKeyDown={onKey} onPaste={onPaste} data-testid="browser-screen"
         className={`flex-1 min-h-0 flex items-center justify-center bg-[#F8F9FA] outline-none cursor-default ${mode === "recording" ? "ring-2 ring-inset ring-[#D93025]/60" : ""}`}>
         {src ? (
-          <img ref={imgRef} src={src} alt="Live browser" draggable={false} onClick={onClick} onDoubleClick={onDouble} onWheel={onWheel} onMouseMove={onMove} data-testid="browser-frame-image"
+          <img ref={imgRef} src={src} alt="Live browser" draggable={false} onMouseDown={onDown} onMouseUp={onUp} onMouseLeave={onUp} onWheel={onWheel} onMouseMove={onMove}
+            onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }} data-testid="browser-frame-image"
             className="max-w-full max-h-full select-none cursor-default" />
         ) : (
           <p className="text-sm text-[#5F6368] animate-pulse" data-testid="browser-loading">{target?.target === "laptop" && !target?.helper_online ? "Your laptop helper is offline — open Shadow Helper or switch to Cloud" : "Starting Chrome…"}</p>
         )}
       </div>
+      <PageContextMenu menu={menu} onClose={() => setMenu(null)} onCopy={copySelection} onPaste={pasteText}
+        onSelectAll={() => send({ kind: "key", key: "Control+a" })} onReload={() => call("/browser/nav", { action: "reload" })} />
       <FileChooserDialog open={!!state?.file_chooser} onDone={loadState} laptop={target?.target === "laptop"} />
     </section>
   );

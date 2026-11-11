@@ -9,6 +9,7 @@ import LaptopPanel from "./LaptopPanel";
 import SchedulesPanel from "./SchedulesPanel";
 import TemplatesPanel from "./TemplatesPanel";
 import ReportsPanel from "./ReportsPanel";
+import PasswordsPanel from "./PasswordsPanel";
 
 export default function SidePanel({ panel, refresh, onRunSkill, onPreviewSkill, onSelectRun, selectedRunId, target, onTarget, currentWorkspace, onTemplateOpened, onCollapse }) {
   const label = PANELS.find((p) => p.id === panel)?.label;
@@ -27,6 +28,7 @@ export default function SidePanel({ panel, refresh, onRunSkill, onPreviewSkill, 
         {panel === "templates" && <TemplatesPanel refresh={refresh} current={currentWorkspace} onOpened={onTemplateOpened} />}
         {panel === "reports" && <ReportsPanel refresh={refresh} onSelectRun={onSelectRun} />}
         {panel === "memory" && <MemoryPanel />}
+        {panel === "passwords" && <PasswordsPanel refresh={refresh} />}
         {panel === "files" && <FilesPanel refresh={refresh} target={target} />}
         {panel === "history" && <HistoryPanel refresh={refresh} onSelect={onSelectRun} selectedId={selectedRunId} />}
         {panel === "permissions" && <PermissionsPanel refresh={refresh} />}

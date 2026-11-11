@@ -64,6 +64,7 @@ TOOLS = [
     _fn("read_page", "Return the visible text of the current page (for extracting data)."),
     _fn("upload_file", "Upload files from the user's Files area into the open file picker or a file input.", {"file_names": {"type": "array", "items": S}, "element_id": I}, ["file_names"]),
     _fn("handle_dialog", "Accept or dismiss the pending alert/confirm/prompt dialog.", {"accept": {"type": "boolean"}, "text": S}, ["accept"], risk=True),
+    _fn("sign_in", "Fill the user's saved username and password for the current site into its login form (you never see the password). Then click the site's sign-in button.", {"username": S}),
     _fn("read_file", "Read a file from the user's Files area (csv, txt, json, xlsx).", {"file_name": S}, ["file_name"]),
     _fn("write_file", "Create/overwrite a file in the user's Files area (e.g. results.csv).", {"file_name": S, "content": S}, ["file_name", "content"]),
     _fn("update_plan", "Set the visible checklist of sub-tasks.", {"items": {"type": "array", "items": {"type": "object", "properties": {"title": S, "status": {"type": "string", "enum": ["todo", "active", "done", "skipped"]}}, "required": ["title", "status"]}}}, ["items"]),
@@ -77,7 +78,7 @@ TOOLS = [
         {"table": S, "columns": {"type": "array", "items": S}, "rows": {"type": "array", "items": {"type": "array", "items": S}}}, ["table", "columns", "rows"]),
     _fn("finish", "End the task.", {"summary": S, "success": {"type": "boolean"}}, ["summary", "success"]),
 ]
-SIMULATED = {"click", "click_at", "type_text", "select_option", "press_key", "hover", "upload_file", "handle_dialog",
+SIMULATED = {"click", "click_at", "type_text", "select_option", "press_key", "hover", "upload_file", "handle_dialog", "sign_in",
              "write_file", "remember", "grant_permission", "add_rows"}
 PREVIEW_NOTE = """MODE: PREVIEW (dry run). Nothing you do with click, type, select, keys, hover, upload, dialogs, files, memory or tables is executed.
 Those calls are only shown to the user as "would do" steps with a screenshot. You may really navigate, open/switch tabs, scroll and read pages.
@@ -204,6 +205,10 @@ class RunEngine:
         grp = st.get("group") or {}
         ws = (f'WORKSPACE: "{grp.get("name", "Main")}"' + (f' for client/company "{grp["label"]}"' if grp.get("label") else "")
               + " — this workspace has its own logins and tabs. Work only with this client's accounts, files and data.\n")
+        import shadow_vault as vault
+        saved = await vault.logins_for(self.db, run["user_id"], vault.origin_of(url))
+        if saved:
+            ws += f"SAVED LOGINS FOR THIS SITE: {', '.join(x['username'] or '(no username)' for x in saved)} — on a sign-in page call sign_in instead of asking the user or typing a password.\n"
         return f"""{mode}{ws}GOAL: {run['goal']}
 USER MESSAGES DURING THIS RUN:
 {msgs}
@@ -333,6 +338,17 @@ Call exactly one tool."""
             await self.db.permissions.update_one({"user_id": uid, "category": a["category"], "skill_id": None},
                 {"$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now_iso(), "source": "command"}}, upsert=True)
             return f"Standing permission for {a['category']} saved"
+        elif name == "sign_in":
+            import shadow_vault as vault
+            origin = vault.origin_of(await sess.current_url())
+            logins = await vault.logins_for(self.db, uid, origin)
+            pick = next((x for x in logins if a.get("username") and x["username"] == a["username"]), logins[0] if logins else None)
+            if not pick:
+                return f"No saved login for {origin or 'this page'} — ask the user to sign in or save a password"
+            sec = await vault.secret(self.db, uid, pick["id"])
+            res = await sess.fill_login(username=sec["username"], password=sec["password"])
+            await sess.dismiss_credential()
+            return f"{res} for {sec['username']}. Now click the sign-in / next button."
         elif name == "wait":
             await asyncio.sleep(min(int(a.get("seconds") or 1), 30))
             return "ok"
