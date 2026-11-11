@@ -5,7 +5,7 @@ import { useApi, errMsg } from "@/lib/api";
 
 const CHIPS = ["Open three tabs and compare prices for", "Download my latest invoice from", "Fill this form using my memory on"];
 
-function useVoice(api, onText) {
+export function useVoice(api, onText) {
   const [listening, setListening] = useState(false);
   const [busy, setBusy] = useState(false);
   const rec = useRef(null);

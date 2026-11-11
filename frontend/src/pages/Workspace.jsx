@@ -12,6 +12,8 @@ import ActivityPanel from "@/components/shadow/ActivityPanel";
 import ApprovalDialog from "@/components/shadow/ApprovalDialog";
 import SkillReviewDialog from "@/components/shadow/SkillReviewDialog";
 import UpdateBanner from "@/components/shadow/UpdateBanner";
+import HomeScreen from "@/components/shadow/HomeScreen";
+import { ArrowLeft } from "lucide-react";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 
 const HANDLE = "w-1 bg-[#DADCE0] hover:bg-[#1A73E8]/60 data-[resize-handle-state=drag]:bg-[#1A73E8] transition-colors";
@@ -61,6 +63,7 @@ export default function Workspace() {
   const api = useApi();
   const [group, setGroupState] = useState(getGroup());
   const [view, setView] = useState("single");
+  const [screen, setScreen] = useState(SOLO ? "browser" : "home");
   const [wsDialog, setWsDialog] = useState(null);
   const [panel, setPanel] = useState("skills");
   const layout = useLayout();
@@ -164,7 +167,8 @@ export default function Workspace() {
       if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
       const r = await api.post("/runs", payload);
       setRunId(r.data.id); setRun(null); bump(); lastRunByGroup.current[getGroup()] = r.data.id; loadGroups();
-      toast.success(r.data.status === "running" ? `Shadow is on it in ${current?.name || "this workspace"}` : "Reply sent");
+      const name = groups.find((x) => x.id === getGroup())?.name || "this workspace";
+      toast.success(r.data.status === "running" ? `Shadow is on it in ${name}` : "Reply sent");
     } catch (e) { toast.error(errMsg(e)); }
   };
 
@@ -178,6 +182,29 @@ export default function Workspace() {
 
   const isRunning = run?.status === "running";
   const mode = bstate?.recording ? "recording" : isRunning ? "agent" : "manual";
+
+  const banner = status && !status.openai_configured && (
+    <div className="rounded-lg border border-[#B06000]/40 bg-[#B06000]/10 text-[#B06000] text-sm px-4 py-2" data-testid="openai-key-banner">
+      OpenAI key not added yet — the browser works, but learning, commands and voice are off until the key is added.
+    </div>
+  );
+
+  if (screen === "home") return (
+    <>
+      <HomeScreen groups={groups} max={max} selected={group} onSelect={switchGroup}
+        onRun={(id, command) => { switchGroup(id); startRun({ command }); }}
+        onOpen={(id) => { switchGroup(id); setScreen("browser"); }}
+        onEdit={(g) => setWsDialog(g)} onClose={closeGroup} onNew={() => setWsDialog({})}
+        onPauseAll={() => allRuns("pause")} onResumeAll={() => allRuns("resume")}
+        banner={<>{banner}<UpdateBanner target={target} /></>}
+        panelProps={{ refresh, target, onTarget: changeTarget, currentWorkspace: current, selectedRunId: runId,
+          onRunSkill: (s) => startRun({ skill_id: s.id, command: "" }), onPreviewSkill: (s) => startRun({ skill_id: s.id, command: "", mode: "preview" }),
+          onSelectRun: (id) => { setRunId(id); setScreen("browser"); },
+          onTemplateOpened: async (g, r) => { if (r) lastRunByGroup.current[g.id] = r.id; await loadGroups(); switchGroup(g.id); bump(); } }} />
+      <WorkspaceDialog open={!!wsDialog} workspace={wsDialog?.id ? wsDialog : null} onClose={() => setWsDialog(null)} onSave={saveWorkspace} />
+      <ApprovalDialog run={run} onDecide={(decision) => runAction("approval", { decision })} />
+    </>
+  );
 
   return (
     <div className="h-screen flex bg-white text-[#202124] overflow-hidden" data-testid="workspace">
@@ -195,17 +222,17 @@ export default function Workspace() {
       </>}
       <ResizablePanel id="main" order={2} minSize={35}>
       <main className="h-full min-w-0 flex flex-col p-2 gap-2 relative z-10 bg-[#F8F9FA]">
-        {status && !status.openai_configured && (
-          <div className="rounded-lg border border-[#B06000]/40 bg-[#B06000]/10 text-[#B06000] text-sm px-4 py-2" data-testid="openai-key-banner">
-            OpenAI key not added yet — the browser works, but learning, commands and voice are off until the key is added.
-          </div>
-        )}
+        {banner}
         {!SOLO && <UpdateBanner target={target} />}
         {SOLO ? (
           <p className="text-xs font-mono uppercase tracking-widest text-[#5F6368]" data-testid="solo-group-name">Workspace · <span className="text-[#1A73E8]">{current?.name || "…"}</span>{current?.label && <span className="text-[#3C4043]"> · {current.label}</span>}</p>
-        ) : layout.bar && (
-          <GroupBar groups={groups} max={max} current={group} view={view} onView={setView} onSelect={switchGroup} onNew={() => setWsDialog({})} onClose={closeGroup} onEdit={(g) => setWsDialog(g)}
-            onPauseAll={() => allRuns("pause")} onResumeAll={() => allRuns("resume")} />
+        ) : (
+          <div className="flex items-center gap-2">
+          <button onClick={() => setScreen("home")} data-testid="back-to-home-button" title="Back to main screen"
+            className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-lg border border-[#DADCE0] text-xs text-[#3C4043] hover:bg-[#F1F3F4] transition-colors"><ArrowLeft className="h-3.5 w-3.5" />Home</button>
+          {layout.bar && <div className="flex-1 min-w-0"><GroupBar groups={groups} max={max} current={group} view={view} onView={setView} onSelect={switchGroup} onNew={() => setWsDialog({})} onClose={closeGroup} onEdit={(g) => setWsDialog(g)}
+            onPauseAll={() => allRuns("pause")} onResumeAll={() => allRuns("resume")} /></div>}
+          </div>
         )}
         {view === "grid" && !SOLO && layout.bar ? <GroupGrid groups={groups} onOpen={switchGroup} /> : (
           <BrowserView key={group} mode={mode} onState={setBstate} state={bstate} onTakeOver={() => isRunning && runAction("pause")} target={target} onTarget={changeTarget}
