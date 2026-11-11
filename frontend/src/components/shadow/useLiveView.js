@@ -9,6 +9,7 @@ export function useLiveView(api, onError) {
   const [live, setLive] = useState(false);
   const wsRef = useRef(null);
   const sizeRef = useRef(null);
+  const pending = useRef({});
   const errRef = useRef(onError);
   errRef.current = onError;
 
@@ -39,6 +40,7 @@ export function useLiveView(api, onError) {
           const m = JSON.parse(e.data);
           if (m.type === "fallback") { ws.onclose = null; wsRef.current = null; startPolling(); }
           else if (m.type === "error") errRef.current?.(m.detail);
+          else if (m.type === "selection") { pending.current[m.id]?.(m.text); delete pending.current[m.id]; }
           return;
         }
         if (!streaming) { streaming = true; fails = 0; setLive(true); }
@@ -68,5 +70,15 @@ export function useLiveView(api, onError) {
     const ws = wsRef.current;
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "resize", width, height }));
   };
-  return { src, live, sendInput, resize };
+  const selection = () => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== 1) return api.get("/browser/selection").then((r) => r.data.text);
+    const id = Math.random().toString(36).slice(2);
+    return new Promise((resolve) => {
+      pending.current[id] = resolve;
+      ws.send(JSON.stringify({ type: "selection", id }));
+      setTimeout(() => { if (pending.current[id]) { delete pending.current[id]; resolve(""); } }, 5000);
+    });
+  };
+  return { src, live, sendInput, resize, selection };
 }

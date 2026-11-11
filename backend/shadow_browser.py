@@ -318,7 +318,9 @@ class Group:
         try:
             c = json.loads(payload)
             if c.get("password") and c.get("origin", "").startswith("http"):
-                self.pending_cred = {"origin": c["origin"].lower(), "username": str(c.get("username") or "")[:200], "password": c["password"][:500]}
+                page = source.get("page")
+                self.pending_cred = {"origin": c["origin"].lower(), "username": str(c.get("username") or "")[:200], "password": c["password"][:500],
+                                     "url": page.url if page else "", "page": page, "t": time.time()}
         except Exception:
             return
 
@@ -328,7 +330,7 @@ class Group:
             return
         try:
             cdp = await self.ctx.new_cdp_session(page)
-            await cdp.send("Network.setUserAgentOverride", {"userAgent": ua["ua"], "acceptLanguage": "en-US,en;q=0.9", "platform": "Linux x86_64",
+            await cdp.send("Network.setUserAgentOverride", {"userAgent": ua["ua"], "acceptLanguage": "en-US,en", "platform": "Linux x86_64",
                                                              "userAgentMetadata": ua["meta"]})
             page._shadow_ua = cdp  # keep the session alive: the override lasts only while it is attached
         except Exception:
@@ -336,7 +338,7 @@ class Group:
 
     async def take_credential(self):
         c, self.pending_cred = self.pending_cred, None
-        return c
+        return {k: c[k] for k in ("origin", "username", "password")} if c else None
 
     async def dismiss_credential(self):
         self.pending_cred = None
@@ -383,12 +385,12 @@ class Group:
         task = asyncio.ensure_future(coro)
         end = time.time() + timeout
         while time.time() < end:
+            await asyncio.wait({task}, timeout=0.2)
             if task.done():
                 return task.result()
             if self.pending_dialog and self.pending_dialog is not before:
                 task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                 return f'Action opened a {self.pending_dialog.type} dialog: "{self.pending_dialog.message}"'
-            await asyncio.sleep(0.2)
         task.cancel()
         raise TimeoutError(f"Action did not finish within {timeout}s")
 
@@ -503,6 +505,8 @@ class Group:
                 has_pw = await asyncio.wait_for(page.evaluate("() => !!document.querySelector('input[type=password]')"), 1)
             except Exception:
                 pass
+        if cred and (time.time() - cred["t"] > 90 or (cred.get("page") is page and page and page.url == cred["url"] and has_pw)):
+            cred = None
         import hashlib
         return {
             "group": {"id": self.id, "name": self.name, "label": self.label},
@@ -880,7 +884,7 @@ class BrowserSession:
     def _ctx_kwargs(self):
         kw = {"viewport": VIEWPORT, "accept_downloads": True}
         if self.ua:
-            kw.update(user_agent=self.ua["ua"], locale="en-US", extra_http_headers={"Accept-Language": "en-US,en;q=0.9"})
+            kw.update(user_agent=self.ua["ua"], locale="en-US")
         return kw
 
     async def start(self):

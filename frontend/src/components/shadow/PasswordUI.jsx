@@ -11,7 +11,7 @@ export function SavePasswordBubble({ api, offer, onDone }) {
   if (!offer) return null;
   const act = async (action) => {
     setBusy(true);
-    try { const r = await api.post("/passwords/offer", { action }); if (r.data.saved) toast.success("Password saved"); }
+    try { const r = await api.post("/passwords/offer", { action }); if (r.data.saved) { toast.success("Password saved"); window.dispatchEvent(new Event("shadow:passwords")); } }
     catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); onDone(); }
   };
   return (

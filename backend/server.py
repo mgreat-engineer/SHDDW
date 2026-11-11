@@ -1100,6 +1100,10 @@ async def browser_stream(ws: WebSocket, token: str = "", group: str = "1"):
                 with suppress(Exception):
                     await s.set_viewport(msg["width"], msg["height"])
                 continue
+            if msg.get("type") == "selection":
+                with suppress(Exception):
+                    await ws.send_json({"type": "selection", "id": msg.get("id"), "text": await s.selection_text()})
+                continue
             if msg.get("type") != "input":
                 continue
             try:

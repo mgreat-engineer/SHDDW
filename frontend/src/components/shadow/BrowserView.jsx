@@ -49,7 +49,7 @@ function ToolBtn({ testId, title, onClick, active, children }) {
 
 export default function BrowserView({ mode, state, onState, onTakeOver, target, onTarget, layout }) {
   const api = useApi();
-  const { src, live, sendInput, resize } = useLiveView(api, (d) => toast.error(d));
+  const { src, live, sendInput, resize, selection } = useLiveView(api, (d) => toast.error(d));
   const imgRef = useRef(null);
   const screenRef = useRef(null);
   useEffect(() => {
@@ -103,9 +103,9 @@ export default function BrowserView({ mode, state, onState, onTakeOver, target, 
   };
   const copySelection = async () => {
     try {
-      const r = await api.get("/browser/selection");
-      if (!r.data.text) return toast("Nothing selected — highlight text on the page first");
-      await navigator.clipboard.writeText(r.data.text);
+      const text = await selection();
+      if (!text) return toast("Nothing selected — highlight text on the page first");
+      await navigator.clipboard.writeText(text);
       toast.success("Copied to your clipboard");
     } catch (e) { toast.error(errMsg(e)); }
   };

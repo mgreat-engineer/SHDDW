@@ -9,6 +9,7 @@ export default function PasswordsPanel({ refresh }) {
   const [q, setQ] = useState("");
   const load = useCallback(() => api.get("/passwords").then((r) => setItems(r.data)).catch(() => setItems([])), [api]);
   useEffect(() => { load(); }, [load, refresh]);
+  useEffect(() => { window.addEventListener("shadow:passwords", load); return () => window.removeEventListener("shadow:passwords", load); }, [load]);
   const del = async (p) => {
     if (!window.confirm(`Delete the saved password for ${p.username || "this login"} on ${p.origin}?`)) return;
     try { await api.delete(`/passwords/${p.id}`); load(); } catch (e) { toast.error(errMsg(e)); }
