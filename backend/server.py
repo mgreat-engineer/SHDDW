@@ -300,10 +300,11 @@ async def bookmarks_import_chrome(uid: str = Depends(uid_of)):
     except Exception as e:
         msg = str(e)
         raise HTTPException(409, "Update Shadow Helper to the latest version to import Chrome bookmarks" if "Not allowed" in msg else msg[:200])
+    items = [b for b in items if isinstance(b, dict)] if isinstance(items, list) else []
     added = 0
     for b in items[:2000]:
         with suppress(HTTPException):
-            added += (await _add_bookmark(uid, b.get("url", ""), b.get("title"), b.get("folder")))[0]
+            added += (await _add_bookmark(uid, str(b.get("url") or ""), str(b.get("title") or ""), str(b.get("folder") or "")))[0]
     return {"found": len(items), "added": added}
 
 
@@ -333,10 +334,12 @@ async def passwords_import(file: UploadFile = File(...), uid: str = Depends(uid_
     if len(raw) > 5_000_000:
         raise HTTPException(413, "File too large")
     try:
-        rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig"))))
+        reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig")))
+        cols = {(k or "").strip().lower() for k in (reader.fieldnames or [])}
+        rows = list(reader)
     except Exception:
         raise HTTPException(400, "That isn't a Chrome passwords CSV file")
-    if rows and not {"url", "password"} <= {k.strip().lower() for k in rows[0].keys() if k}:
+    if not {"url", "password"} <= cols:
         raise HTTPException(400, "Missing url/password columns — export from Chrome's Password Manager")
     saved = skipped = 0
     for r in rows[:5000]:

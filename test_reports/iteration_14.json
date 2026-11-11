@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 14 tested Password Update, Passwords CSV Import, Bookmark Folders and Import from Chrome on the cloud target, plus regression checks. Backend: test_iter14_folders_import.py passed 10 of 11. The one failure is minor: a header-only CSV with the wrong columns returns 200 {saved:0, skipped:0} instead of 400. The CSV checks that passed: valid rows saved with blank rows skipped, BOM and capitalised headers accepted, missing columns -> 400, binary file -> 400, over 5MB -> 413, no token -> 401, and GET /api/passwords never returns secrets. Bookmark folders passed: names are trimmed, whitespace is collapsed and names are capped at 60 characters; edits work, a blank title is ignored, folder rename moves bookmarks, renaming to '' moves them to the bar, an unknown id -> 404, a duplicate url keeps the original, and a non-http url -> 400. Import from Chrome passed: 409 'Open Shadow Helper…' with no helper. With a simulated paired helper on WS /api/helper/ws it returned {found:4, added:2}, kept the folders, deduped by url, skipped the ftp entry and added 0 on a second run. An old helper answering 'Not allowed: chrome_bookmarks' gave 409 'Update Shadow Helper…'. After the helper disconnected and its device was revoked, the target was back to cloud. The desktop parser read_chrome_bookmarks passed a unit check covering the three roots, nested folders joined with ' / ', non-http urls skipped, deduping across profiles, a bad JSON profile ignored, the limit and a ValueError when no files exist. Password update, API (tests/iter14_pw_update.py): with OldPass1 imported, filling the saved login fails with no offer. Typing the real password reaches /secure with update:true; saving keeps the same record id, the key fill then logs in with no re-offer, and the same password again gives no offer. A new username (student on practicetestautomation.com) gives update:false. Password update, UI: the bubble showed 'Update password?' with an 'Update' button for tomsmith; clicking it showed the toast 'Password updated' and closed the bubble. After logout, the key fill plus Enter reached /secure with no bubble. Bookmarks UI: the star added the page and opened the editor with 'Bookmarks bar' and 'New folder…' options. A new folder ' TEST_Folder ' made the chip, and its menu listed the bookmark. Re-opening the star showed the saved folder and name. Moving to the bar removed the chip and showed a top-level bookmark. Renaming through the prompt changed the chip to TEST_Renamed. Clicking the bookmark in the menu opened the page, and remove left the bar empty. The bookmarks menu's Import from Chrome option showed the helper-missing toast. Passwords panel import showed 'Imported 1 password(s), skipped 1' and the list updated.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/passwords/import", "issue": "Header-only or empty files are accepted. A plain text file like 'hello world\\n' or an empty file returns 200 {saved:0, skipped:0} instead of 400, because the column check runs only `if rows`. Check csv.DictReader(...).fieldnames instead."},
+      {"endpoint": "POST /api/bookmarks/import-chrome", "issue": "Code review, not run: if the helper returns a non-list (None or a dict) or non-dict items, `items[:2000]` and `b.get` would raise and give a 500. Guard with isinstance checks."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Bookmark editor (star pop-up)", "issues": ["The heading always says 'Bookmark added', even when re-opening an existing bookmark to edit or move it. Chrome says 'Edit bookmark' in that case.", "Choosing 'New folder…' with an empty name silently moves the bookmark to the Bookmarks bar."]},
+      {"screen": "Folder chip menu", "issues": ["Rename uses the browser's native window.prompt instead of an in-app input.", "The remove X on each bookmark only appears on hover (opacity-0), so it can't be found on touch screens."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter14_folders_import.py", "/app/tests/iter14_chrome_parser.py", "/app/tests/iter14_pw_update.py", "/app/tests/iter14_pw_new.py", "/app/test_reports/pytest/iter14.xml"],
+  "action_items": [
+    "passwords_import: return 400 when the CSV header lacks url/password, even if there are no data rows (use reader.fieldnames), and return 400 for an empty file.",
+    "import-chrome: check that the helper result is a list of dicts before using it, to avoid a 500.",
+    "Optional UX: show 'Edit bookmark' when re-opening an existing bookmark; replace window.prompt for folder rename with an in-app input."
+  ],
+  "critical_code_review_comments": [
+    "_add_bookmark runs count_documents once per item, so importing 2000 Chrome bookmarks costs about 4000 DB round trips. Count once and use bulk_write upserts.",
+    "Folder names go straight into data-testid values (`bookmark-folder-${name}`). Imported nested folders such as 'Work / Deep' produce test ids with spaces and slashes.",
+    "Import dedupes on the exact url string, so 'https://x.com' and 'https://x.com/' are both kept.",
+    "server.py (~1400 lines) and shadow_browser.py (~1140 lines) are still over the size guideline."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter14_folders_import.py", "/app/tests/iter14_chrome_parser.py", "/app/tests/iter14_pw_update.py", "/app/tests/iter14_pw_new.py"],
+  "success_rate": {"backend": "95% (10/11 pytest; parser unit check passed; update-flow API script 4/4; new-username check passed)", "frontend": "100% (update bubble + Update, key fill regression, star/editor/folders/rename/open/remove, Import from Chrome toast, passwords CSV import)"},
+  "seed_data_creation": "Everything created was deleted by id: TEST_ bookmarks, TEST passwords under test-iter14*.example.com, and workspaces TEST_iter14_pw and TEST_iter14_new. Two paired TEST_iter14_fake devices were revoked through DELETE /api/devices/{id}. tomsmith (id e9534695-4b44-4a18-bf24-1ce6ac9f4ff3) was set to OldPass1, then updated back through the UI 'Update' to SuperSecretPassword!; a key fill then reached /secure. The bookmark list is empty, as it was before. The target is cloud and no helper is online. Not caused by my scripts: during the run, another client (likely main/E1) deleted the 'Search for events' workspace (DELETE /api/browser/groups/f5bdbb54), closed tabs in Main and started a run 'open google' in Main.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Fake helper: POST /api/devices/pair-code, then POST /api/helper/pair {code} gives a token. Connect WS /api/helper/ws with a Bearer token, send a hello event, then answer {id, result} or {id, error}. Revoke the device afterwards so the target goes back to cloud. Login automation: practicetestautomation.com needs a click on Submit at (403,755); Enter does not submit. On the-internet.herokuapp.com, a fill followed by Control+a, typing and Enter works through /api/browser/input. Get a UI ticket with clerk_token.py ... ticket > /tmp/ticket, then read it in the playwright script and goto /sign-in?__clerk_ticket=..."
+}

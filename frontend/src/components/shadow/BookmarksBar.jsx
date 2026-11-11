@@ -31,15 +31,18 @@ function Fav({ url }) {
     : <Globe className="h-3.5 w-3.5 shrink-0 text-[#5F6368]" />;
 }
 
-function Editor({ bm, b, onClose }) {
+function Editor({ bm, b, isNew, onClose }) {
   const [title, setTitle] = useState(b.title);
   const [folder, setFolder] = useState(b.folder || "");
   const [fresh, setFresh] = useState("");
-  const done = () => { bm.edit(b, { title, folder: folder === NEW ? fresh : folder }); onClose(); };
+  const done = () => {
+    if (folder === NEW && !fresh.trim()) return toast.error("Give the new folder a name");
+    bm.edit(b, { title, folder: folder === NEW ? fresh : folder }); onClose();
+  };
   const field = "w-full mt-1 bg-[#F1F3F4] rounded-md px-3 py-1.5 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-[#1A73E8]";
   return (
     <div className="space-y-3" data-testid="bookmark-editor">
-      <p className="text-sm font-semibold text-[#202124]">Bookmark added</p>
+      <p className="text-sm font-semibold text-[#202124]" data-testid="bookmark-editor-title">{isNew ? "Bookmark added" : "Edit bookmark"}</p>
       <label className="block text-xs text-[#5F6368]">Name<input value={title} onChange={(e) => setTitle(e.target.value)} className={field} data-testid="bookmark-name-input" /></label>
       <label className="block text-xs text-[#5F6368]">Folder
         <select value={folder} onChange={(e) => setFolder(e.target.value)} className={field} data-testid="bookmark-folder-select">
@@ -59,9 +62,10 @@ function Editor({ bm, b, onClose }) {
 
 export function StarButton({ bm, url, title }) {
   const [open, setOpen] = useState(false);
+  const [isNew, setIsNew] = useState(false);
   const found = bm.items.find((b) => b.url === url);
   if (!/^https?:\/\//.test(url || "")) return null;
-  const click = async () => { if (!found) { const b = await bm.add(url, title); if (b) setOpen(true); } else setOpen(true); };
+  const click = async () => { if (!found) { const b = await bm.add(url, title); if (b) { setIsNew(true); setOpen(true); } } else { setIsNew(false); setOpen(true); } };
   return (
     <Popover open={open && !!found} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -70,7 +74,7 @@ export function StarButton({ bm, url, title }) {
           <Star className={`h-4 w-4 ${found ? "fill-[#1A73E8] text-[#1A73E8]" : ""}`} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 bg-white">{found && <Editor key={found.id} bm={bm} b={found} onClose={() => setOpen(false)} />}</PopoverContent>
+      <PopoverContent align="end" className="w-72 bg-white">{found && <Editor key={found.id} bm={bm} b={found} isNew={isNew} onClose={() => setOpen(false)} />}</PopoverContent>
     </Popover>
   );
 }
@@ -82,14 +86,15 @@ function Mark({ b, onOpen, onRemove, wide }) {
       <Fav url={b.url} />
       <span className="text-xs text-[#3C4043] truncate flex-1">{b.title}</span>
       <button onClick={(e) => { e.stopPropagation(); onRemove(b); }} data-testid={`bookmark-remove-${b.id}`} title="Remove"
-        className="opacity-0 group-hover/bm:opacity-100 p-0.5 rounded-full text-[#5F6368] hover:bg-[#DADCE0]"><X className="h-3 w-3" /></button>
+        className={`${wide ? "opacity-60" : "opacity-0"} group-hover/bm:opacity-100 p-0.5 rounded-full text-[#5F6368] hover:bg-[#DADCE0]`}><X className="h-3 w-3" /></button>
     </div>
   );
 }
 
 function FolderChip({ bm, name, items, onOpen }) {
   const [open, setOpen] = useState(false);
-  const rename = () => { const n = window.prompt("Rename folder", name); if (n !== null && n.trim() && n !== name) bm.renameFolder(name, n); };
+  const [renaming, setRenaming] = useState(null);
+  const rename = () => { const n = (renaming || "").trim(); if (n && n !== name) bm.renameFolder(name, n); setRenaming(null); };
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -99,7 +104,15 @@ function FolderChip({ bm, name, items, onOpen }) {
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-1 bg-white max-h-[60vh] overflow-y-auto thin-scroll" data-testid={`bookmark-folder-menu-${name}`}>
         {items.map((b) => <Mark key={b.id} b={b} wide onOpen={(u) => { setOpen(false); onOpen(u); }} onRemove={bm.remove} />)}
-        <button onClick={rename} className="w-full text-left text-[11px] text-[#5F6368] px-2 py-1.5 mt-1 border-t border-[#DADCE0] hover:text-[#202124]" data-testid={`bookmark-folder-rename-${name}`}>Rename folder…</button>
+        {renaming === null ? (
+          <button onClick={() => setRenaming(name)} className="w-full text-left text-[11px] text-[#5F6368] px-2 py-1.5 mt-1 border-t border-[#DADCE0] hover:text-[#202124]" data-testid={`bookmark-folder-rename-${name}`}>Rename folder…</button>
+        ) : (
+          <form onSubmit={(e) => { e.preventDefault(); rename(); }} className="flex gap-1 px-1 pt-2 mt-1 border-t border-[#DADCE0]">
+            <input autoFocus value={renaming} onChange={(e) => setRenaming(e.target.value)} maxLength={60} data-testid="bookmark-folder-rename-input"
+              className="flex-1 min-w-0 bg-[#F1F3F4] rounded-md px-2 py-1 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-[#1A73E8]" />
+            <button type="submit" className="text-xs px-3 rounded-full bg-[#1A73E8] text-white" data-testid="bookmark-folder-rename-save">Save</button>
+          </form>
+        )}
       </PopoverContent>
     </Popover>
   );
