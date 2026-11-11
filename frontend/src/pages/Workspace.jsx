@@ -30,9 +30,11 @@ function useGroups(api, notifyOther) {
       const r = await api.get("/browser/groups");
       setData(r.data);
       r.data.groups.forEach((g) => {
+        const prev = seen.current[g.id];
         const st = g.run?.status;
-        if (st && seen.current[g.id] && seen.current[g.id] !== st) notifyOther(g, st);
-        seen.current[g.id] = st || "idle";
+        if (st && prev?.status && prev.status !== st) notifyOther(g, st);
+        if (!g.run && prev?.id) api.get(`/runs/${prev.id}`).then((x) => notifyOther(g, x.data.status, x.data)).catch(() => {});
+        seen.current[g.id] = g.run ? { id: g.run.id, status: st } : null;
       });
     } catch {}
   }, [api, notifyOther]);
@@ -57,13 +59,18 @@ export default function Workspace() {
 
   const bump = () => setRefresh((n) => n + 1);
 
-  const notifyOther = useCallback((g, st) => { if (g.id !== getGroup() && NEEDS[st]) notify(`${g.name} ${NEEDS[st]}`, g.run?.goal || ""); }, []);
+  const notifyOther = useCallback((g, st, full) => {
+    if (g.id === getGroup()) return;
+    if (NEEDS[st]) notify(`${g.name} ${NEEDS[st]}`, g.run?.goal || "");
+    else if (full && ALERT[st]) notify(`${g.name}: ${ALERT[st]}`, full.summary || full.goal);
+  }, []);
+  const lastRunByGroup = useRef({});
   const [{ groups, max }, loadGroups] = useGroups(api, notifyOther);
   const current = groups.find((g) => g.id === group);
 
   const switchGroup = useCallback((id) => {
     setGroup(id); setGroupState(id); setView("single");
-    setBstate(null); setRunId(null); setRun(null); lastActive.current = null;
+    setBstate(null); setRunId(lastRunByGroup.current[id] || null); setRun(null); lastActive.current = null;
   }, []);
   useEffect(() => { if (groups.length && !current) switchGroup("1"); }, [groups, current, switchGroup]);
   useEffect(() => { if (current) document.title = SOLO ? `Shadow · ${current.name}` : "Shadow"; }, [current]);
@@ -94,6 +101,7 @@ export default function Workspace() {
       const r = await api.get("/runs/active");
       if (g !== getGroup()) return;
       const id = r.data.run?.id || null;
+      if (id) lastRunByGroup.current[g] = id;
       if (id && id !== lastActive.current) setRunId(id);
       lastActive.current = id;
     } catch {}
@@ -123,13 +131,16 @@ export default function Workspace() {
     try {
       if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
       const r = await api.post("/runs", payload);
-      setRunId(r.data.id); setRun(null); bump();
+      setRunId(r.data.id); setRun(null); bump(); lastRunByGroup.current[getGroup()] = r.data.id; loadGroups();
       toast.success(r.data.status === "running" ? `Shadow is on it in ${current?.name || "this group"}` : "Reply sent");
     } catch (e) { toast.error(errMsg(e)); }
   };
 
   const runAction = async (action, body) => {
-    try { await api.post(`/runs/${run.id}/${action}`, body); pollRun(); bump(); }
+    try {
+      await api.post(`/runs/${run.id}/${action}`, body); pollRun(); bump();
+      if (action === "resume" && run.group_id && run.group_id !== getGroup()) { await loadGroups(); lastRunByGroup.current[run.group_id] = run.id; switchGroup(run.group_id); }
+    }
     catch (e) { toast.error(errMsg(e)); }
   };
 
@@ -158,7 +169,7 @@ export default function Workspace() {
           <BrowserView key={group} mode={mode} onState={setBstate} state={bstate} onTakeOver={() => isRunning && runAction("pause")} target={target} onTarget={changeTarget} />
         )}
         <CommandBar recording={!!bstate?.recording} recorded={bstate?.recorded || []} recordedCount={bstate?.recorded_count || 0}
-          waiting={run?.status === "waiting_input"} busy={isRunning} onRun={startRun} onRecorded={setRecorded} />
+          waiting={run?.status === "waiting_input"} busy={isRunning} groupName={current?.name} onRecordChange={loadGroups} onRun={startRun} onRecorded={setRecorded} />
       </main>
       <ActivityPanel run={run} onAction={runAction} onRunReal={(r) => startRun({ skill_id: r.skill_id, command: "" })} />
       <ApprovalDialog run={run} onDecide={(decision) => runAction("approval", { decision })} />

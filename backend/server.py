@@ -73,7 +73,7 @@ def uid_of(user: dict = Depends(require_user)) -> str:
     return user["user_id"]
 
 
-def gid_of(group: str = Query("1", pattern=r"^\d{1,3}$")) -> str:
+def gid_of(group: str = Query("1", pattern=r"^[a-z0-9]{1,12}$")) -> str:
     return group
 
 
@@ -282,8 +282,10 @@ async def groups_rename(gid: str, body: GroupIn, uid: str = Depends(uid_of)):
 async def groups_close(gid: str, uid: str = Depends(uid_of)):
     if await active_run(uid, gid):
         raise HTTPException(409, "Shadow is working in this group. Stop its task first.")
+    if gid == "1":
+        raise HTTPException(400, "The main group cannot be closed")
     b = await session(uid, whole=True)
-    await bcall(b.group_close(gid=gid), 400)
+    await bcall(b.group_close(gid=gid), 404)
     return {"ok": True}
 
 
@@ -560,7 +562,13 @@ async def runs_resume(rid: str, uid: str = Depends(uid_of)):
     run = await get_run(rid, uid)
     if run["status"] not in ("paused", "failed", "stopped"):
         raise HTTPException(400, "Cannot resume")
-    s = await session(uid, run.get("target", "cloud"), run.get("group_id", "1"))
+    gid = run.get("group_id", "1")
+    other = await active_run(uid, gid)
+    if other and other["id"] != rid:
+        raise HTTPException(409, "Another task is active in that group. Stop it first.")
+    b = await session(uid, run.get("target", "cloud"), whole=True)
+    await bcall(b.group_new(name=f"Resumed: {run['goal']}"[:40], url="", gid=gid), 409)
+    s = b.group(gid)
     corr = await bcall(s.corrections_take())
     await bcall(s.clear_events())
     upd = {"$set": {"status": "running", "pending": None, "summary": ""}}

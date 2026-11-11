@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 5 tested window groups through the backend and UI (cloud target only). Backend: 12 of 12 new tests pass. They cover list and Main, create, rename and delete, a 404 after delete, the 400 refusal for group 1, the 409 at the 10-group limit, the 422 for an invalid group param, tab and navigation isolation, nav, input, switch and close, frame at quality=30, dialog and filechooser scoping, per-group recording, shared cookies (checked visually: httpbin /cookies in group 3 showed shadowtest=1 set in group 2), a target=_blank popup staying in the opening group, and parallel GPT runs in two groups. Both runs completed. A second run in the same group returned 409, runs/active was scoped per group, and closing a group with a live run returned 409. Light regression with test_shadow_api.py (no GPT runs): 17 of 17 pass. UI: the group bar, New group n/10, double-click rename, grid view with live tiles, tile click switching to single view, tile and chip pop-out (/?group=N&solo=1), group switching (URL bar, tabs and Activity follow the group), a command going to the selected group with a running status dot, Watch me scoped per group, the solo page (no side rail or group bar, solo-group-name, title 'Shadow · <name>') and close via the X button all work. Two real issues were found (see below). All TEST groups are closed, only Main remains, and no runs are active.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "groups + runs after backend restart", "issue": "Group ids are reused after a restart because _n resets to 1, but runs that were active keep their old group_id. Startup turns them into 'paused' runs pointing at a group that no longer exists. Resume gives 404 ('This window group was closed'). When a new group later gets the same id, it inherits the stale run: the chip and tile show it, POST /runs in the new group returns 409, and DELETE of the group returns 409. Reproduced with tests/probe_stale_group_run.py by inserting a paused run for the next group id.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "DELETE /api/browser/groups/{unknown}", "issue": "Returns 400 'This window group was closed' instead of 404, because group_close raises ValueError and the call maps it to 400."},
+      {"endpoint": "POST /api/runs/{rid}/resume", "issue": "A stopped or failed run whose group was closed cannot be resumed: it returns 404. Consider reopening a group, or falling back to the current or Main group."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Workspace switchGroup / pollActive", "issue": "After you switch away from a group and come back, its just-finished run is gone from the Activity panel, which shows 'No task yet'. switchGroup clears runId and pollActive only returns ACTIVE runs. A user who starts a task in group 2, watches group 1, then returns to group 2 never sees the result summary; it is only in History. Fix: remember the last runId per group, or have the backend return that group's latest run.", "selector": "[data-testid=activity-empty] / [data-testid=run-summary]", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Other-group notifications", "issue": "notifyOther only fires for awaiting_approval and waiting_input. Background groups that complete or fail give no toast, so the user does not know group 3 finished while they are on group 1.", "affected_selectors": ["[data-testid^=group-status-]"]}
+    ],
+    "design_issues": [
+      {"screen": "Grid view", "issues": ["The command bar stays active in grid view and sends to the last selected group, with nothing showing which group that is. Add 'to <group name>' to the placeholder or a chip, or disable it in grid view."]},
+      {"screen": "Group chip status dot", "issues": ["The red recording dot appears only after the next 2.5s groups poll. Call loadGroups after record start/stop."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter5_groups.py", "/app/backend/tests/probe_stale_group_run.py", "/app/test_reports/pytest/iter5_parallel.xml"],
+  "action_items": [
+    "Fix stale group runs after a restart. Options: mark runs whose group_id is not '1' as stopped or reassigned at startup; make group ids unique (e.g. a uuid or a persisted counter); or have create/close/active_run ignore runs whose group no longer exists in BrowserSession.groups.",
+    "Keep the last run per group in Workspace, or add GET /runs/latest?group=, so that coming back to a group still shows its finished run's summary.",
+    "Return 404 when closing an unknown group.",
+    "Optional: notify on completed or failed runs in other groups; show which group the command bar targets in grid view; refresh groups right after record start/stop."
+  ],
+  "critical_code_review_comments": [
+    "server.py has 980 lines. Split it into routers (browser/groups, runs, schedules).",
+    "groups_list builds by = {group_id: run}. If two active runs ever share a group id (e.g. stale runs), the last one wins silently.",
+    "Group metadata is only in memory, so after a restart users lose group names and tabs while their runs still reference group ids. This is the root cause of the critical issue.",
+    "The BrowserSession._on_page orphan adoption into group 1 after 1.5s is correct for target=_blank popups. Verified that the popup handler adopts first."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter5_groups.py", "/app/backend/tests/probe_stale_group_run.py"],
+  "success_rate": {"backend": "100% of the 12 new tests and 17 regression tests (1 logic bug found by code review plus probe)", "frontend": "~90% (1 functional bug: finished run is lost after switching groups)"},
+  "seed_data_creation": "None kept. The probe inserted one TEST_ paused run doc and deleted it by id. TEST groups were all closed.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && pytest tests/test_iter5_groups.py -n 0 -v -s (about 30s; TestParallelRuns uses GPT for about 15s). Group ids keep increasing within one backend process (ids 2 to 19 were used during this run), so do not hardcode ids. A 'Grants' group 2 was not present at the start, only Main. User A target = cloud. Clerk tickets are single-use: generate one per browser_automation call."
+}

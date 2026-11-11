@@ -30,15 +30,15 @@ function useVoice(api, onText) {
   return { listening, busy, start, stop };
 }
 
-export default function CommandBar({ recording, recorded, recordedCount, waiting, busy, onRun, onRecorded }) {
+export default function CommandBar({ recording, recorded, recordedCount, waiting, busy, onRun, onRecorded, groupName, onRecordChange = () => {} }) {
   const api = useApi();
   const [text, setText] = useState("");
   const [note, setNote] = useState("");
   const submit = (t = text) => { if (!t.trim()) return; onRun({ command: t.trim() }); setText(""); };
   const voice = useVoice(api, (t) => submit(t));
 
-  const startRec = async () => { try { await api.post("/record/start"); toast("Recording — do the task in the browser"); } catch (e) { toast.error(errMsg(e)); } };
-  const stopRec = async () => { try { const r = await api.post("/record/stop"); onRecorded(r.data.events); } catch (e) { toast.error(errMsg(e)); } };
+  const startRec = async () => { try { await api.post("/record/start"); onRecordChange(); toast("Recording — do the task in the browser"); } catch (e) { toast.error(errMsg(e)); } };
+  const stopRec = async () => { try { const r = await api.post("/record/stop"); onRecordChange(); onRecorded(r.data.events); } catch (e) { toast.error(errMsg(e)); } };
   const addNote = async (e) => { e.preventDefault(); if (!note.trim()) return; try { await api.post("/record/note", { text: note }); setNote(""); toast.success("Note added to this step"); } catch (err) { toast.error(errMsg(err)); } };
 
   if (recording) return (
@@ -73,7 +73,7 @@ export default function CommandBar({ recording, recorded, recordedCount, waiting
           {voice.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
         </button>
         <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} data-testid="command-input"
-          placeholder={waiting ? "Reply to Shadow's question…" : voice.listening ? "Listening… release to send" : "Tell Shadow what to do, or name a skill…"}
+          placeholder={waiting ? "Reply to Shadow's question…" : voice.listening ? "Listening… release to send" : `Tell Shadow what to do in ${groupName || "this group"}, or name a skill…`}
           className="flex-1 bg-transparent outline-none text-sm px-2 placeholder:text-slate-500" />
         <button onClick={() => submit()} disabled={!text.trim()} data-testid="command-submit-button"
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#00F0FF] text-black text-sm font-semibold hover:shadow-[0_0_20px_rgba(0,240,255,0.45)] disabled:opacity-40 transition-shadow"><Send className="h-4 w-4" />{waiting ? "Reply" : "Run"}</button>

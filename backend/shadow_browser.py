@@ -603,7 +603,6 @@ class BrowserSession:
         self.owner: dict = {}
         self.closed = False
         self.last_used = time.time()
-        self._n = 1
 
     def touch(self):
         self.last_used = time.time()
@@ -669,14 +668,13 @@ class BrowserSession:
     async def groups_list(self):
         return [g.info() for g in self.groups.values()]
 
-    async def group_new(self, name="", url=""):
+    async def group_new(self, name="", url="", gid=""):
+        if gid and gid in self.groups:
+            return self.groups[gid].info()
         if len(self.groups) >= MAX_GROUPS:
             raise ValueError(f"You can have up to {MAX_GROUPS} window groups. Close one first.")
-        self._n += 1
-        while str(self._n) in self.groups:
-            self._n += 1
-        gid = str(self._n)
-        g = Group(self, gid, (name or "").strip()[:40] or f"Group {gid}")
+        gid = gid or uuid.uuid4().hex[:8]
+        g = Group(self, gid, (name or "").strip()[:40] or f"Group {len(self.groups) + 1}")
         self.groups[gid] = g
         try:
             await g.new_tab(url or "https://www.google.com")
