@@ -71,6 +71,14 @@ Build a standalone browser like Polar browser with a mind of its own. It learns 
 - shddw.com "unsupported protocol": Emergent side OK (SSL active); user must fix DNS (remove AAAA/extra records, Cloudflare grey cloud) / wait for propagation
 - Tested: iteration_9 + iteration_10 (all fixes verified), stale first frame fixed after
 
+## Bookmarks, copy from page, saved passwords, anti-bot fix (2026-06)
+- Bookmarks (shared across workspaces): /api/bookmarks; star in omnibox + bookmarks bar
+- Copy: real mouse down/move/up over the stream (drag-select, click counts), Ctrl+C + right-click menu (Copy/Paste/Select all/Reload); selection fetched over the same WS so it includes the latest drag
+- Passwords (same in every workspace): CRED_JS captures logins; bubble "Save password?" only after a successful login (failed login same-URL reload discards it, 90s expiry); Fernet-encrypted in Mongo `passwords` (VAULT_KEY in backend/.env); key icon fills; agent tool sign_in fills without the AI seeing the password; Passwords side panel (list/search/delete)
+- "Unusual traffic" fix: normal Chrome UA + client hints via CDP override (no HeadlessChrome), webdriver hidden, Accept-Language clean; Google /sorry/ page auto-redirects the search to Bing. Server IPs can still be flagged by Google; laptop helper uses the user's own network
+- Input latency cut from ~0.33s to ~0.09s (run_guarded)
+- Tested: iteration_11, 12, 13 (all pass)
+
 ## Backlog
 - P1: Phase 2 remainder: buy signing certificates (Apple Developer ID $99/yr; Windows certificate or Azure Trusted Signing) and add them as GitHub secrets; email/push alert when a scheduled run waits for approval
 - P1: Move files to object storage for multi-instance production

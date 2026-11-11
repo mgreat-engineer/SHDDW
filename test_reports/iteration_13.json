@@ -1,0 +1,18 @@
+{
+  "summary": "Retest of the iteration-12 minor issue (a stale wrong-password offer after a failed login), run on the cloud target. FIXED. In shadow_browser.py, Group._on_nav now clears pending_cred when the main frame of the same page navigates back to the same URL (a failed login reloads /login). API: iter12_offer_expiry.py showed save_password=None on /login, None after navigating to example.com, and None at 93s. UI, failed login: typing tomsmith / WrongPass123 showed 'Your password is invalid!' and no bubble, and navigating to example.com afterwards showed no bubble. UI, successful login: I deleted the saved login in the Passwords panel (empty state shown), then a manual tomsmith / SuperSecretPassword! login reached /secure and showed save-password-bubble with username tomsmith. Save closed the bubble and the panel listed tomsmith straight away. Regression: after logout, opening /login, choosing the login from the key button and pressing Enter reached /secure with no re-offer. test_iter11_vault_bookmarks.py passed 8/8.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/tests/iter12_offer_expiry.py", "/app/backend/tests/test_iter11_vault_bookmarks.py", "/app/test_reports/pytest/iter13_regr11.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_on_nav treats any same-URL main-frame navigation of the cred's page as a failure. A site whose successful login posts and then redirects back to the same URL (e.g. a login form on the home page) would never be offered. This is acceptable for now but worth noting.",
+    "shadow_vault.save still upserts on origin+username, so a deliberate save of a different password silently overwrites the old one (no 'Update password?' wording).",
+    "shadow_browser.py (~1140 lines) and server.py (~1300 lines) are still over the size guideline."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (expiry script 3/3 checks; iter11 regression 8/8)", "frontend": "100% (failed-login no offer, success offer + save, fill + Enter with no re-offer)"},
+  "seed_data_creation": "Workspace TEST_expiry was created and then deleted by id. The tomsmith saved login was deleted and re-saved through the UI bubble; the new id is e9534695-4b44-4a18-bf24-1ce6ac9f4ff3 and it is left in place. Main's active tab is now the-internet.herokuapp.com/secure.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Sign in to the UI with a fresh ticket: python /app/tests/clerk_token.py shadow.a+clerk_test@example.com ticket. The frame image is at x=440,y=176 at 1920x1080. On the-internet /login, the frame-relative positions are username (280,349), password (280,412) and Login (127,472); after a failed login the error banner pushes the form down about 44px. The Passwords panel is opened with nav-passwords-link, and delete uses window.confirm."
+}
