@@ -1,0 +1,26 @@
+{
+  "summary": "Iteration 7 tested isolated, persistent workspaces on the cloud target. Backend: the new tests/test_iter7_workspaces.py passes 6 of 6. It covers label CRUD, cookie isolation, pause-all and resume-all across 2 workspaces with real GPT runs, the agent seeing the client label, and 401 without a token. The restart script /app/tests/restart_persist_check.py ran a real `supervisorctl restart backend`; 13 of 14 checks passed, and the one miss was an artifact of the check itself, not a bug. Regression: test_iter5_groups.py and test_iter6_fixes.py pass 18 of 18 (the parallel GPT test was not run), and test_shadow_api.py passes 20 of 20. Cookie isolation, verified on frame screenshots: workspace A's httpbin /cookies shows only ws=a, B shows only ws=b, Main shows only its own older cookie, and a fresh workspace shows {}. Restart: groups were back about 6.7s after the restart. The same ids, names, labels, tab URLs and active tab came back for Main, PATOG and 2 TEST workspaces. The R1 cookie (restart=r1) survived the restart and R2 still had no cookies. A run active at the restart became 'paused' with the 'Interrupted by a restart' summary and stayed paused (it did not auto-resume). Resume finished it in the same workspace id with 'The page title is: Example Domain', and the workspace was not renamed to 'Resumed:'. Agent prompt: the run in workspace 'TEST_Mercy' labelled 'Mercy Hospital TESTX' answered 'This workspace is for client/company: Mercy Hospital TESTX.' UI, all verified: New workspace dialog (fields, cancel, create with start page; the new workspace is selected and shows example.com), chip label, pencil edit with prefilled fields and no URL field in edit mode, double-click opening the dialog, grid tile labels, and the solo page showing 'Workspace · name · label' with title 'Shadow · name'. Pause all is enabled only while a task runs, Resume all only while one is paused. Toasts read 'Paused 1 workspace task(s) — you have control' and 'Resumed 1 workspace task(s)'. The background finish toast 'TEST_UI_ws2: Task finished' appeared while on Main.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Solo page header / chips", "issues": ["Solo-page label uses text-slate-500 on #08090E, which is low contrast; slate-400 is suggested. Chip and tile labels are 10px text at #00F0FF/70, readable but small."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter7_workspaces.py", "/app/tests/restart_persist_check.py", "/app/backend/tests/test_iter5_groups.py", "/app/test_reports/pytest/iter7.xml", "/app/test_reports/pytest/iter7_regress.xml"],
+  "action_items": ["Optional (LOW): raise the contrast of the solo-page label."],
+  "critical_code_review_comments": [
+    "Startup only converts 'running' runs to 'paused'. Runs in waiting_input or awaiting_approval at a restart stay in that state, which is fine because the user's reply or approval calls engine.start. The summary text is overwritten on those paused runs, though.",
+    "Race: group_close pops the group then unlinks <id>.json. autosave/save_states iterates a snapshot of list(groups), so a save in flight can rewrite the state file after the unlink and leave an orphaned cookies file on disk. Ids are random hex so the impact is low, but consider a lock or an unlink after the save.",
+    "save_workspaces skips saving if no workspace has tabs. That is fine, but a session whose browser crashed (closed=True) also never saves, so the last autosave (up to 10s old) is what gets restored.",
+    "pause-all and resume-all run serially; resume-all calls runs_resume for each run (each may open a browser context). That is fine for 10 runs or fewer.",
+    "server.py is 1046 lines and shadow_browser.py 890. Splitting them into routers/modules is still recommended."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter7_workspaces.py (new)", "/app/tests/restart_persist_check.py (new)", "/app/backend/tests/test_iter5_groups.py (test_shared_cookies -> test_isolated_cookies; expects {} in the other workspace)"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None kept. All TEST_ workspaces were closed. Only Main and the pre-existing PATOG ('PATOG Clinic') remain, both untouched. Completed GPT test runs remain in history.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run the backend tests serially with -n 0. Restart check: python /app/tests/restart_persist_check.py (it restarts the backend). The URL check for workspace R2 compares tab count only, because its run navigates the tab before the restart. Cookies are verified by saving /api/browser/frame JPEGs of httpbin.org/cookies to /tmp and viewing them. Workspaces now survive hot reloads too (restored from the Mongo 'workspaces' collection). UI sign-in needs one ticket per browser session."
+}

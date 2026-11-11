@@ -12,7 +12,7 @@ function Chip({ g, active, onSelect, onClose, onEdit }) {
       <span className={`h-2 w-2 rounded-full ${DOT[g.run?.status] || (g.recording ? "bg-[#FF3B30]" : "bg-slate-600")}`} data-testid={`group-status-${g.id}`} title={g.run ? `${g.run.status}: ${g.run.goal}` : "Idle"} />
       <span className="flex flex-col leading-tight max-w-[150px]">
         <span className="truncate" data-testid={`group-name-${g.id}`}>{g.name}</span>
-        {g.label && <span className="truncate text-[10px] text-[#00F0FF]/70" data-testid={`group-label-${g.id}`}>{g.label}</span>}
+        {g.label && <span className="truncate text-[11px] text-[#00F0FF]/90" data-testid={`group-label-${g.id}`}>{g.label}</span>}
       </span>
       <span className="font-mono text-[10px] text-slate-500">{g.tabs}</span>
       <button title="Edit name and client" data-testid={`group-edit-${g.id}`} onClick={(e) => { e.stopPropagation(); onEdit(g); }} className={ib}><Pencil className="h-3 w-3" /></button>

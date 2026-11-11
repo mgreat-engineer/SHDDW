@@ -160,19 +160,19 @@ class TestGroupIsolation:
         print("record stop:", str(r.json())[:300])
         assert "TEST note" in str(r.json())
 
-    def test_shared_cookies(self, A, created):
+    def test_isolated_cookies(self, A, created):
+        # iter7: workspaces are ISOLATED now (own cookies); g3 must NOT see g2's cookie
         g2 = new_group(A, created, name="TEST_ck2")["id"]
         g3 = new_group(A, created, name="TEST_ck3")["id"]
-        r = A.post(f"{API}/browser/navigate", params={"group": g2}, json={"url": "https://httpbin.org/cookies/set?shadowtest=1"}, timeout=60)
+        r = A.post(f"{API}/browser/navigate", params={"group": g2}, json={"url": "https://httpbin.org/cookies/set?iso5=1"}, timeout=60)
         assert r.status_code == 200
         r = A.post(f"{API}/browser/navigate", params={"group": g3}, json={"url": "https://httpbin.org/cookies"}, timeout=60)
         assert r.status_code == 200
         time.sleep(1)
         st = A.get(f"{API}/browser/state", params={"group": g3}).json()
-        # read the page text via a tabs state is not enough; use frame size + url, then verify cookie via a new tab title
         assert "httpbin.org/cookies" in st["tabs"][0]["url"]
         img = A.get(f"{API}/browser/frame", params={"group": g3, "quality": 80}).content
-        open("/tmp/cookie_frame.jpg", "wb").write(img)  # inspect visually: should show "shadowtest": "1"
+        open("/tmp/cookie_frame.jpg", "wb").write(img)  # inspect visually: should show "cookies": {} (no iso5)
 
     def test_popup_stays_in_group(self, A, created):
         g = new_group(A, created, name="TEST_pop", url="https://example.com")["id"]

@@ -173,7 +173,7 @@ export default function Workspace() {
         )}
         {!SOLO && <UpdateBanner target={target} />}
         {SOLO ? (
-          <p className="text-xs font-mono uppercase tracking-widest text-slate-400" data-testid="solo-group-name">Workspace · <span className="text-[#00F0FF]">{current?.name || "…"}</span>{current?.label && <span className="text-slate-500"> · {current.label}</span>}</p>
+          <p className="text-xs font-mono uppercase tracking-widest text-slate-400" data-testid="solo-group-name">Workspace · <span className="text-[#00F0FF]">{current?.name || "…"}</span>{current?.label && <span className="text-slate-300"> · {current.label}</span>}</p>
         ) : (
           <GroupBar groups={groups} max={max} current={group} view={view} onView={setView} onSelect={switchGroup} onNew={() => setWsDialog({})} onClose={closeGroup} onEdit={(g) => setWsDialog(g)}
             onPauseAll={() => allRuns("pause")} onResumeAll={() => allRuns("resume")} />

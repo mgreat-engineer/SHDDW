@@ -34,7 +34,7 @@ function Tile({ g, onOpen }) {
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[#262B3D] bg-[#181B26]">
         <span className="flex-1 min-w-0 flex flex-col leading-tight">
           <span className="text-xs font-semibold truncate" data-testid={`group-tile-name-${g.id}`}>{g.name}</span>
-          {g.label && <span className="text-[10px] text-[#00F0FF]/70 truncate" data-testid={`group-tile-label-${g.id}`}>{g.label}</span>}
+          {g.label && <span className="text-[11px] text-[#00F0FF]/90 truncate" data-testid={`group-tile-label-${g.id}`}>{g.label}</span>}
         </span>
         {g.run ? <StatusBadge status={g.run.status} /> : <span className="text-[10px] font-mono uppercase text-slate-500">{g.recording ? "recording" : "idle"}</span>}
         <button title="Open in its own window" data-testid={`group-tile-popout-${g.id}`} onClick={(e) => { e.stopPropagation(); popOut(g.id); }}

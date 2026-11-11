@@ -48,7 +48,16 @@ Build a standalone browser like Polar browser with a mind of its own. It learns 
 - Prod check: deployer saw no 500s after the Chromium auto-install redeploy; user should sign in on the live site to confirm
 - Tested: iteration_5 + iteration_6 (all fixes verified)
 
+## Isolated, persistent workspaces (2026-06)
+- User choices: name stays "Shadow"; one Shadow login, but each workspace has its OWN website logins/cookies/history; after a restart workspaces and tabs reopen and tasks wait for Resume; client/company label per workspace; Pause all / Resume all
+- Main workspace = persistent profile; other workspaces = separate browser contexts in a second Chromium, logins saved to <profile>-ws/<id>.json (storage_state incl. IndexedDB)
+- Mongo `workspaces` {user_id, target, groups:[{id,name,label,urls,active}]}: saved every 10s, on create/edit/close/navigate/tabs, before idle reaping; restored on first access after restart. Laptop helper: restored when it reconnects
+- Agent prompt gets "WORKSPACE: name for client label" so it stays on that client
+- API: POST/PUT /api/browser/groups take label; POST /api/runs/pause-all, /api/runs/resume-all
+- UI: WorkspaceDialog (name, client, start page), chip/tile labels, edit pencil, Pause all / Resume all
+- Tested: iteration_7 (all pass, incl. real restart)
+
 ## Backlog
 - P1: Phase 2 remainder: buy signing certificates (Apple Developer ID $99/yr; Windows certificate or Azure Trusted Signing) and add them as GitHub secrets; email/push alert when a scheduled run waits for approval
 - P1: Move files to object storage for multi-instance production
-- P2: Phase 3 virtual-desktop control of other apps; richer iframe support; save groups across restarts
+- P2: Phase 3 virtual-desktop control of other apps; richer iframe support; per-workspace Files folders
