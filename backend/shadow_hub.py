@@ -19,6 +19,7 @@ TIMEOUTS = {
     "cancel_chooser": 10, "record_start": 10, "record_note": 10, "record_stop": 10, "corrections_start": 10,
     "corrections_take": 10, "take_events": 10, "clear_events": 10, "elements": 15, "page_text": 15,
     "act": 120, "current_url": 10, "files_list": 20, "file_read": 30, "file_write": 30, "highlight": 10, "unhighlight": 10,
+    "groups_list": 10, "group_new": 40, "group_rename": 10, "group_close": 20,
 }
 
 
@@ -89,14 +90,21 @@ def get(user_id):
 class RemoteSession:
     """Same async API as BrowserSession, executed on the user's laptop helper."""
 
-    def __init__(self, conn: HelperConn):
+    def __init__(self, conn: HelperConn, gid=None):
         self.conn = conn
+        self.gid = gid
+
+    def group(self, gid="1"):
+        return RemoteSession(self.conn, str(gid or "1"))
+
+    def _kw(self, kw):
+        return {**kw, "group": self.gid} if self.gid and self.gid != "1" else kw
 
     def touch(self):
         pass
 
     async def frame(self, quality=60):
-        b = await self.conn.call("frame", timeout=12, quality=quality)
+        b = await self.conn.call("frame", timeout=12, **self._kw({"quality": quality}))
         return base64.b64decode(b) if b else None
 
     def __getattr__(self, name):
@@ -106,5 +114,5 @@ class RemoteSession:
         async def call(*args, **kw):
             if args:
                 raise TypeError(f"{name}() must be called with keyword arguments")
-            return await self.conn.call(name, timeout=TIMEOUTS[name], **kw)
+            return await self.conn.call(name, timeout=TIMEOUTS[name], **self._kw(kw))
         return call

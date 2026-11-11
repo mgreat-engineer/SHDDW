@@ -342,7 +342,7 @@ Call exactly one tool."""
                 run = await self.db.runs.find_one({"id": run_id}, {"_id": 0})
                 if not run or run["status"] != "running":
                     return
-                sess = await self.resolver(user_id, run.get("target", "cloud"))
+                sess = await self.resolver(user_id, run.get("target", "cloud"), run.get("group_id", "1"))
                 if run["step_count"] >= MAX_STEPS:
                     await self._set(run_id, status="failed", summary=f"Stopped after {MAX_STEPS} steps.")
                     return

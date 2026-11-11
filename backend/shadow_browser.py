@@ -189,12 +189,17 @@ class CloudFiles:
         return f"Saved {p.name}"
 
 
-class BrowserSession:
-    def __init__(self, files, profile_dir: Path, launch: dict = None):
-        self.files = files
-        self.profile_dir = Path(profile_dir)
-        self.launch = launch or {}
-        self.ctx = None
+MAX_GROUPS = 10
+
+
+class Group:
+    """One window group: its own tabs, dialogs, recording and task. Shares logins (cookies) with the other groups."""
+    def __init__(self, browser, gid: str, name: str):
+        self.b = browser
+        self.id = gid
+        self.name = name
+        self.files = browser.files
+        self.own = []
         self.active = 0
         self.recording = None
         self.correction_sink = None
@@ -202,11 +207,19 @@ class BrowserSession:
         self.pending_chooser = None
         self.events = []
         self.last_frame = None
-        self.closed = False
-        self.last_used = time.time()
+
+    @property
+    def closed(self):
+        return self.b.closed or self.id not in self.b.groups
 
     def touch(self):
-        self.last_used = time.time()
+        self.b.touch()
+
+    def info(self):
+        ps = self.pages()
+        p = ps[max(0, min(self.active, len(ps) - 1))] if ps else None
+        return {"id": self.id, "name": self.name, "tabs": len(ps), "url": p.url if p else "",
+                "recording": self.recording is not None}
 
     async def run_guarded(self, coro, timeout=30):
         """Run a browser action; return early (success) if it opened a JS dialog that now blocks it."""
@@ -222,35 +235,6 @@ class BrowserSession:
             await asyncio.sleep(0.2)
         task.cancel()
         raise TimeoutError(f"Action did not finish within {timeout}s")
-
-    async def start(self):
-        pw = await get_playwright()
-        prof = self.profile_dir
-        prof.mkdir(parents=True, exist_ok=True)
-        for f in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
-            try:
-                os.unlink(prof / f)
-            except FileNotFoundError:
-                pass
-        kwargs = dict(headless=True, viewport=VIEWPORT, accept_downloads=True,
-                      args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"])
-        kwargs.update(self.launch)
-        self.ctx = await pw.chromium.launch_persistent_context(str(prof), **kwargs)
-        await self.ctx.expose_binding("__shadowRecord", self._on_record)
-        await self.ctx.add_init_script(RECORDER_JS)
-        self.ctx.on("page", self._on_page)
-        self.ctx.on("close", self._on_ctx_close)
-        for p in self.ctx.pages:
-            self._wire(p)
-        if not self.ctx.pages:
-            await self.ctx.new_page()
-        try:
-            await self.page().goto("https://www.google.com", wait_until="domcontentloaded", timeout=20000)
-        except Exception:
-            pass
-
-    def _on_ctx_close(self, *_):
-        self.closed = True
 
     # ---------- events ----------
     def capture(self, ev: dict):
@@ -268,29 +252,30 @@ class BrowserSession:
         self.events = self.events[-30:]
         self.capture({"kind": "browser", "text": text})
 
-    async def _on_record(self, source, payload):
-        import json
-        try:
-            ev = json.loads(payload)
-        except Exception:
+    def adopt(self, page, focus=True):
+        if page in self.b.owner:
             return
-        self.capture(ev)
-
-    def _wire(self, page):
+        self.b.owner[page] = self
+        self.own.append(page)
         page.on("dialog", self._on_dialog)
         page.on("download", self._on_download)
         page.on("filechooser", self._on_chooser)
         page.on("framenavigated", lambda fr, p=page: self._on_nav(p, fr))
         page.on("close", self._on_page_close)
+        page.on("popup", self._on_popup)
+        if focus:
+            self.active = self.pages().index(page) if not page.is_closed() else self.active
 
-    def _on_page_close(self, _page):
+    def _on_popup(self, page):
+        self.adopt(page)
+        self.push_event(f"Opened new tab {page.url}")
+
+    def _on_page_close(self, page):
+        self.b.owner.pop(page, None)
+        if page in self.own:
+            self.own.remove(page)
         self.pending_dialog = None
         self.pending_chooser = None
-
-    def _on_page(self, page):
-        self._wire(page)
-        self.active = len(self.pages()) - 1
-        self.push_event(f"Opened new tab {page.url}")
 
     def _on_nav(self, page, frame):
         if frame == page.main_frame:
@@ -319,7 +304,7 @@ class BrowserSession:
 
     # ---------- tabs ----------
     def pages(self):
-        return [p for p in self.ctx.pages if not p.is_closed()]
+        return [p for p in self.own if not p.is_closed()]
 
     def page(self):
         ps = self.pages()
@@ -329,9 +314,10 @@ class BrowserSession:
         return ps[self.active]
 
     async def ensure_page(self):
+        if self.closed:
+            raise ValueError("This window group was closed")
         if not self.pages():
-            await self.ctx.new_page()
-            self.active = 0
+            self.adopt(await self.b.ctx.new_page())
         return self.page()
 
     async def state(self):
@@ -344,6 +330,7 @@ class BrowserSession:
             tabs.append({"index": i, "url": p.url, "title": title or p.url, "active": i == self.active})
         dlg = self.pending_dialog
         return {
+            "group": {"id": self.id, "name": self.name},
             "tabs": tabs,
             "recording": self.recording is not None,
             "recorded": [e["desc"] for e in (self.recording or [])][-8:],
@@ -378,8 +365,7 @@ class BrowserSession:
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
     async def new_tab(self, url: str = ""):
-        page = await self.ctx.new_page()
-        self.active = self.pages().index(page)
+        self.adopt(await self.b.ctx.new_page())
         if url:
             await self.navigate(url)
 
@@ -388,7 +374,6 @@ class BrowserSession:
         if not 0 <= index < len(ps):
             raise ValueError(f"No tab {index}")
         self.active = index
-        await ps[index].bring_to_front()
         self.capture({"kind": "browser", "text": f"Switched to tab {index} ({ps[index].url})"})
 
     async def close_tab(self, index: int):
@@ -605,6 +590,117 @@ class BrowserSession:
             raise ValueError(f"Unknown browser action {name}")
         await self.settle()
         return "ok"
+
+
+class BrowserSession:
+    """One Chrome per user (shared logins) holding up to MAX_GROUPS independent window groups."""
+    def __init__(self, files, profile_dir: Path, launch: dict = None):
+        self.files = files
+        self.profile_dir = Path(profile_dir)
+        self.launch = launch or {}
+        self.ctx = None
+        self.groups: dict = {}
+        self.owner: dict = {}
+        self.closed = False
+        self.last_used = time.time()
+        self._n = 1
+
+    def touch(self):
+        self.last_used = time.time()
+
+    @property
+    def recording(self):
+        return next((g.recording for g in self.groups.values() if g.recording is not None), None)
+
+    def group(self, gid: str = "1") -> Group:
+        g = self.groups.get(str(gid or "1"))
+        if not g:
+            raise ValueError("This window group was closed")
+        return g
+
+    async def start(self):
+        pw = await get_playwright()
+        prof = self.profile_dir
+        prof.mkdir(parents=True, exist_ok=True)
+        for f in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+            try:
+                os.unlink(prof / f)
+            except FileNotFoundError:
+                pass
+        kwargs = dict(headless=True, viewport=VIEWPORT, accept_downloads=True,
+                      args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"])
+        kwargs.update(self.launch)
+        self.ctx = await pw.chromium.launch_persistent_context(str(prof), **kwargs)
+        await self.ctx.expose_binding("__shadowRecord", self._on_record)
+        await self.ctx.add_init_script(RECORDER_JS)
+        self.ctx.on("page", self._on_page)
+        self.ctx.on("close", self._on_ctx_close)
+        main = self.groups["1"] = Group(self, "1", "Main")
+        for p in self.ctx.pages:
+            main.adopt(p)
+        await main.ensure_page()
+        try:
+            await main.page().goto("https://www.google.com", wait_until="domcontentloaded", timeout=20000)
+        except Exception:
+            pass
+
+    def _on_ctx_close(self, *_):
+        self.closed = True
+
+    def _on_page(self, page):
+        async def orphan():
+            await asyncio.sleep(1.5)
+            if page not in self.owner and not page.is_closed() and "1" in self.groups:
+                self.groups["1"].adopt(page)
+                self.groups["1"].push_event(f"Opened new tab {page.url}")
+        asyncio.ensure_future(orphan())
+
+    async def _on_record(self, source, payload):
+        import json
+        g = self.owner.get(source.get("page"))
+        if not g:
+            return
+        try:
+            g.capture(json.loads(payload))
+        except Exception:
+            return
+
+    # ---------- groups ----------
+    async def groups_list(self):
+        return [g.info() for g in self.groups.values()]
+
+    async def group_new(self, name="", url=""):
+        if len(self.groups) >= MAX_GROUPS:
+            raise ValueError(f"You can have up to {MAX_GROUPS} window groups. Close one first.")
+        self._n += 1
+        while str(self._n) in self.groups:
+            self._n += 1
+        gid = str(self._n)
+        g = Group(self, gid, (name or "").strip()[:40] or f"Group {gid}")
+        self.groups[gid] = g
+        try:
+            await g.new_tab(url or "https://www.google.com")
+        except Exception as e:
+            log.warning("new group first page: %s", e)
+        return g.info()
+
+    async def group_rename(self, gid, name):
+        g = self.group(gid)
+        g.name = (name or "").strip()[:40] or g.name
+        return g.info()
+
+    async def group_close(self, gid):
+        if str(gid) == "1":
+            raise ValueError("The main group cannot be closed")
+        g = self.group(gid)
+        self.groups.pop(g.id, None)
+        for p in list(g.own):
+            self.owner.pop(p, None)
+            try:
+                await p.close()
+            except Exception:
+                pass
+        return True
 
 
 _install_lock = asyncio.Lock()

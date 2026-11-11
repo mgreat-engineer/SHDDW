@@ -4,6 +4,10 @@ import { useAuth } from "@clerk/react";
 
 export const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+let currentGroup = new URLSearchParams(window.location.search).get("group") || "1";
+export const getGroup = () => currentGroup;
+export const setGroup = (g) => { currentGroup = String(g); };
+
 export function useApi() {
   const { getToken } = useAuth();
   return useMemo(() => {
@@ -11,6 +15,7 @@ export function useApi() {
     c.interceptors.request.use(async (cfg) => {
       const t = await getToken();
       if (t) cfg.headers.Authorization = `Bearer ${t}`;
+      cfg.params = { group: currentGroup, ...(cfg.params || {}) };
       return cfg;
     });
     return c;

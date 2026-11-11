@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
@@ -73,6 +73,10 @@ def uid_of(user: dict = Depends(require_user)) -> str:
     return user["user_id"]
 
 
+def gid_of(group: str = Query("1", pattern=r"^\d{1,3}$")) -> str:
+    return group
+
+
 def need_key():
     if not llm_key():
         raise HTTPException(400, "Add your OpenAI key first")
@@ -83,7 +87,7 @@ async def target_of(uid):
     return (doc or {}).get("target", "cloud")
 
 
-async def resolve_session(uid, target):
+async def resolve_browser(uid, target):
     if target == "laptop":
         conn = hub.get(uid)
         if not conn:
@@ -94,13 +98,20 @@ async def resolve_session(uid, target):
     return s
 
 
-async def session(uid, target=None):
+async def resolve_session(uid, target, gid="1"):
+    return (await resolve_browser(uid, target)).group(gid)
+
+
+async def session(uid, target=None, gid="1", whole=False):
     try:
-        return await resolve_session(uid, target or await target_of(uid))
+        b = await resolve_browser(uid, target or await target_of(uid))
+        return b if whole else b.group(gid)
     except HelperOffline:
         raise HTTPException(409, "Your laptop helper is offline. Open Shadow Helper on your laptop, or switch to Cloud.")
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(404, str(e))
     except Exception as e:
         log.exception("cloud browser failed to start")
         raise HTTPException(503, f"Shadow's cloud browser could not start: {str(e)[:160]}")
@@ -118,8 +129,11 @@ async def bcall(coro, code=400):
         raise HTTPException(code, str(e)[:250])
 
 
-async def active_run(uid):
-    return await db.runs.find_one({"user_id": uid, "status": {"$in": ACTIVE}}, {"_id": 0}, sort=[("created_at", -1)])
+async def active_run(uid, gid=None):
+    q = {"user_id": uid, "status": {"$in": ACTIVE}}
+    if gid:
+        q["group_id"] = gid
+    return await db.runs.find_one(q, {"_id": 0}, sort=[("created_at", -1)])
 
 
 @api.get("/status")
@@ -161,69 +175,69 @@ class ChooserIn(BaseModel):
     cancel: bool = False
 
 
-async def take_over(uid, s):
-    run = await active_run(uid)
+async def take_over(uid, s, gid):
+    run = await active_run(uid, gid)
     if run and run["status"] == "running":
         await db.runs.update_one({"id": run["id"]}, {"$set": {"status": "paused", "paused_by": "takeover"}})
         await s.corrections_start()
 
 
 @api.get("/browser/state")
-async def browser_state(uid: str = Depends(uid_of)):
-    s = await session(uid)
+async def browser_state(uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    s = await session(uid, gid=gid)
     st = await bcall(s.state(), 503)
     st["target"] = await target_of(uid)
     return st
 
 
 @api.get("/browser/frame")
-async def browser_frame(uid: str = Depends(uid_of)):
-    s = await session(uid)
-    data = await bcall(s.frame(), 503)
+async def browser_frame(uid: str = Depends(uid_of), gid: str = Depends(gid_of), quality: int = Query(60, ge=20, le=80)):
+    s = await session(uid, gid=gid)
+    data = await bcall(s.frame(quality=quality), 503)
     if not data:
         raise HTTPException(503, "No frame yet")
     return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @api.post("/browser/input")
-async def browser_input(body: InputIn, uid: str = Depends(uid_of)):
-    s = await session(uid)
-    await take_over(uid, s)
+async def browser_input(body: InputIn, uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    s = await session(uid, gid=gid)
+    await take_over(uid, s, gid)
     await bcall(s.input(kind=body.kind, x=body.x, y=body.y, text=body.text, key=body.key, dy=body.dy), 409)
     return {"ok": True}
 
 
 @api.post("/browser/navigate")
-async def browser_navigate(body: UrlIn, uid: str = Depends(uid_of)):
-    s = await session(uid)
-    await take_over(uid, s)
+async def browser_navigate(body: UrlIn, uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    s = await session(uid, gid=gid)
+    await take_over(uid, s, gid)
     await bcall(s.navigate(url=body.url))
     return {"ok": True}
 
 
 @api.post("/browser/nav")
-async def browser_nav(body: NavIn, uid: str = Depends(uid_of)):
-    s = await session(uid)
+async def browser_nav(body: NavIn, uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    s = await session(uid, gid=gid)
     await bcall(s.nav(action=body.action))
     return {"ok": True}
 
 
 @api.post("/browser/tabs")
-async def browser_tabs(body: TabIn, uid: str = Depends(uid_of)):
-    s = await session(uid)
+async def browser_tabs(body: TabIn, uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    s = await session(uid, gid=gid)
     return await bcall(s.tabs(action=body.action, index=body.index, url=body.url))
 
 
 @api.post("/browser/dialog")
-async def browser_dialog(body: DialogIn, uid: str = Depends(uid_of)):
-    s = await session(uid)
+async def browser_dialog(body: DialogIn, uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    s = await session(uid, gid=gid)
     await bcall(s.resolve_dialog(accept=body.accept, text=body.text or ""))
     return {"ok": True}
 
 
 @api.post("/browser/filechooser")
-async def browser_chooser(body: ChooserIn, uid: str = Depends(uid_of)):
-    s = await session(uid)
+async def browser_chooser(body: ChooserIn, uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    s = await session(uid, gid=gid)
     if body.cancel:
         await bcall(s.cancel_chooser())
     else:
@@ -237,31 +251,67 @@ async def target_files(uid: str = Depends(uid_of)):
     return await bcall(s.files_list())
 
 
+# ---------------- window groups ----------------
+class GroupIn(BaseModel):
+    name: Optional[str] = ""
+    url: Optional[str] = ""
+
+
+@api.get("/browser/groups")
+async def groups_list(uid: str = Depends(uid_of)):
+    b = await session(uid, whole=True)
+    groups = await bcall(b.groups_list(), 503)
+    runs = await db.runs.find({"user_id": uid, "status": {"$in": ACTIVE}}, {"_id": 0, "id": 1, "status": 1, "goal": 1, "group_id": 1}).to_list(50)
+    by = {r.get("group_id", "1"): r for r in runs}
+    return {"groups": [{**g, "run": by.get(g["id"])} for g in groups], "max": sb.MAX_GROUPS}
+
+
+@api.post("/browser/groups")
+async def groups_create(body: GroupIn, uid: str = Depends(uid_of)):
+    b = await session(uid, whole=True)
+    return await bcall(b.group_new(name=body.name or "", url=body.url or ""), 409)
+
+
+@api.put("/browser/groups/{gid}")
+async def groups_rename(gid: str, body: GroupIn, uid: str = Depends(uid_of)):
+    b = await session(uid, whole=True)
+    return await bcall(b.group_rename(gid=gid, name=body.name or ""), 404)
+
+
+@api.delete("/browser/groups/{gid}")
+async def groups_close(gid: str, uid: str = Depends(uid_of)):
+    if await active_run(uid, gid):
+        raise HTTPException(409, "Shadow is working in this group. Stop its task first.")
+    b = await session(uid, whole=True)
+    await bcall(b.group_close(gid=gid), 400)
+    return {"ok": True}
+
+
 # ---------------- recording ----------------
 class NoteIn(BaseModel):
     text: str
 
 
 @api.post("/record/start")
-async def record_start(uid: str = Depends(uid_of)):
-    run = await active_run(uid)
+async def record_start(uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    run = await active_run(uid, gid)
     if run and run["status"] == "running":
-        raise HTTPException(409, "Shadow is running a task. Pause or stop it first.")
-    s = await session(uid)
+        raise HTTPException(409, "Shadow is running a task in this group. Pause or stop it first.")
+    s = await session(uid, gid=gid)
     await bcall(s.record_start())
     return {"ok": True}
 
 
 @api.post("/record/note")
-async def record_note(body: NoteIn, uid: str = Depends(uid_of)):
-    s = await session(uid)
+async def record_note(body: NoteIn, uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    s = await session(uid, gid=gid)
     await bcall(s.record_note(text=body.text))
     return {"ok": True}
 
 
 @api.post("/record/stop")
-async def record_stop(uid: str = Depends(uid_of)):
-    s = await session(uid)
+async def record_stop(uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    s = await session(uid, gid=gid)
     return {"events": await bcall(s.record_stop())}
 
 
@@ -347,20 +397,20 @@ async def get_run(rid, uid):
 
 
 @api.post("/runs")
-async def runs_create(body: RunIn, uid: str = Depends(uid_of)):
+async def runs_create(body: RunIn, uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
     need_key()
-    cur = await active_run(uid)
+    cur = await active_run(uid, gid)
     if cur and cur["status"] == "waiting_input" and body.command and body.mode != "preview":
         return await runs_reply(cur["id"], ReplyIn(text=body.command), uid)
     if body.mode == "preview" and not body.skill_id:
         raise HTTPException(400, "Pick a skill to preview")
-    return await create_run(uid, body.skill_id, body.command, await target_of(uid), mode=body.mode or "real")
+    return await create_run(uid, body.skill_id, body.command, await target_of(uid), mode=body.mode or "real", gid=gid)
 
 
-async def create_run(uid, skill_id, command, target, mode="real", schedule_id=None):
-    if await active_run(uid):
-        raise HTTPException(409, "A task is already in progress. Finish, stop or resume it first.")
-    s = await session(uid, target)
+async def create_run(uid, skill_id, command, target, mode="real", schedule_id=None, gid="1"):
+    if await active_run(uid, gid):
+        raise HTTPException(409, "A task is already in progress in this group. Finish, stop or resume it, or open another group.")
+    s = await session(uid, target, gid)
     if (await bcall(s.state(), 409)).get("recording"):
         raise HTTPException(409, "Stop recording first")
     skill = None
@@ -381,7 +431,7 @@ async def create_run(uid, skill_id, command, target, mode="real", schedule_id=No
            "status": "running", "plan": [], "scratch": {}, "messages": [], "corrections": [], "pending": None,
            "step_count": 0, "summary": "", "target": target, "mode": "preview" if mode == "preview" else "real",
            "tables": [], "schedule_id": schedule_id, "trigger": "schedule" if schedule_id else "manual",
-           "created_at": now, "updated_at": now}
+           "group_id": gid, "created_at": now, "updated_at": now}
     await db.runs.insert_one(run)
     run.pop("_id", None)
     await bcall(s.clear_events())
@@ -395,8 +445,8 @@ async def runs_list(uid: str = Depends(uid_of)):
 
 
 @api.get("/runs/active")
-async def runs_active(uid: str = Depends(uid_of)):
-    return {"run": await active_run(uid)}
+async def runs_active(uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
+    return {"run": await active_run(uid, gid)}
 
 
 @api.get("/runs/{rid}")
@@ -499,7 +549,7 @@ async def runs_pause(rid: str, uid: str = Depends(uid_of)):
     if run["status"] != "running":
         raise HTTPException(400, "Not running")
     await db.runs.update_one({"id": rid}, {"$set": {"status": "paused"}})
-    s = await session(uid, run.get("target", "cloud"))
+    s = await session(uid, run.get("target", "cloud"), run.get("group_id", "1"))
     await bcall(s.corrections_start())
     return {"ok": True}
 
@@ -510,7 +560,7 @@ async def runs_resume(rid: str, uid: str = Depends(uid_of)):
     run = await get_run(rid, uid)
     if run["status"] not in ("paused", "failed", "stopped"):
         raise HTTPException(400, "Cannot resume")
-    s = await session(uid, run.get("target", "cloud"))
+    s = await session(uid, run.get("target", "cloud"), run.get("group_id", "1"))
     corr = await bcall(s.corrections_take())
     await bcall(s.clear_events())
     upd = {"$set": {"status": "running", "pending": None, "summary": ""}}
@@ -528,7 +578,7 @@ async def runs_stop(rid: str, uid: str = Depends(uid_of)):
         raise HTTPException(400, "Not active")
     await db.runs.update_one({"id": rid}, {"$set": {"status": "stopped", "pending": None, "summary": run.get("summary") or "Stopped by you."}})
     with suppress(Exception):
-        s = await resolve_session(uid, run.get("target", "cloud"))
+        s = await resolve_session(uid, run.get("target", "cloud"), run.get("group_id", "1"))
         await s.corrections_take()
     return {"ok": True}
 
@@ -866,7 +916,15 @@ async def schedules_delete(sid: str, uid: str = Depends(uid_of)):
 async def _scheduled_start(uid, skill_id, instructions, target, schedule_id):
     if not llm_key():
         raise HTTPException(400, "OpenAI key missing")
-    return await create_run(uid, skill_id, instructions, target, schedule_id=schedule_id)
+    try:
+        return await create_run(uid, skill_id, instructions, target, schedule_id=schedule_id)
+    except HTTPException as e:
+        if e.status_code != 409 or "laptop" in str(e.detail).lower():
+            raise
+    sk = await db.skills.find_one({"id": skill_id, "user_id": uid}, {"_id": 0, "name": 1}) or {}
+    b = await session(uid, target, whole=True)
+    g = await bcall(b.group_new(name=f"Scheduled: {sk.get('name', 'skill')}"[:40], url=""), 409)
+    return await create_run(uid, skill_id, instructions, target, schedule_id=schedule_id, gid=g["id"])
 
 
 _cron_seen: dict = {}
@@ -909,6 +967,7 @@ async def startup():
     app.state.index_task = asyncio.create_task(ensure_indexes())
     app.state.reaper = asyncio.create_task(sb.reap_idle(db, ACTIVE))
     app.state.browser_install = asyncio.create_task(sb.ensure_browser_installed())
+    await db.runs.update_many({"group_id": {"$exists": False}}, {"$set": {"group_id": "1"}})
     await db.runs.update_many({"status": "running"}, {"$set": {"status": "paused", "summary": "Interrupted by a restart — press Resume to continue from the last step."}})
 
 

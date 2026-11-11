@@ -22,7 +22,8 @@ log = logging.getLogger("shadow.helper")
 ALLOWED = {"state", "frame", "input", "nav", "navigate", "tabs", "resolve_dialog", "upload", "cancel_chooser",
            "record_start", "record_note", "record_stop", "corrections_start", "corrections_take", "take_events",
            "clear_events", "elements", "page_text", "act", "current_url", "files_list", "file_read", "file_write",
-           "highlight", "unhighlight"}
+           "highlight", "unhighlight", "groups_list", "group_new", "group_rename", "group_close"}
+GROUP_ADMIN = {"groups_list", "group_new", "group_rename", "group_close"}
 PASSIVE = {"state", "frame", "current_url", "files_list", "take_events", "clear_events"}
 
 
@@ -257,7 +258,8 @@ class Helper:
                 self.last_work = time.time()
             s = await self.ensure_browser()
             s.touch()
-            res = await getattr(s, method)(**params)
+            gid = params.pop("group", "1")
+            res = await getattr(s if method in GROUP_ADMIN else s.group(gid), method)(**params)
             if method == "frame":
                 res = base64.b64encode(res).decode() if res else None
             out = {"id": mid, "result": res}
