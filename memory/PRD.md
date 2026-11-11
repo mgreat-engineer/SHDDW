@@ -39,7 +39,16 @@ Build a standalone browser like Polar browser with a mind of its own. It learns 
 - Schedules (user choice: laptop offline → cloud): /api/schedules CRUD (days 0=Sun, quarter-hour time, IANA tz). .emergent/crons.yml calls POST /api/cron/schedules every 15 min (WEBHOOK_CRON_SECRET), atomically claims due slots and starts runs (trigger 'schedule'). Schedules panel + skill-card button
 - Tested: iteration_4 (backend 100% after the delete fix, UI flows) + minor fixes
 
+## Window groups (2026-06)
+- User choices: groups share logins; tasks run in parallel; up to 10 groups; switcher + grid overview; pop out a group into its own window for another screen
+- shadow_browser.py: BrowserSession = one Chrome context per user (shared cookies) holding Group objects (own tabs, dialogs, file chooser, recording, corrections, events). Popups stay in the opening group; random 8-hex group ids; "1" = Main (cannot close)
+- API: every browser/record/run endpoint takes ?group= (default 1). /api/browser/groups GET/POST/PUT/DELETE. Runs store group_id; one active run per group, many in parallel. Resume recreates a closed group. Scheduled runs open a new group if Main is busy. Laptop helper supports groups (RemoteSession.group, helper GROUP_ADMIN)
+- UI: GroupBar (chips with status dots, rename by double-click, pop-out, close, New group n/10), GroupGrid live tiles, solo page /?group=<id>&solo=1, per-group last run memory, toasts for background groups
+- Group list is in memory (restart leaves only Main)
+- Prod check: deployer saw no 500s after the Chromium auto-install redeploy; user should sign in on the live site to confirm
+- Tested: iteration_5 + iteration_6 (all fixes verified)
+
 ## Backlog
 - P1: Phase 2 remainder: buy signing certificates (Apple Developer ID $99/yr; Windows certificate or Azure Trusted Signing) and add them as GitHub secrets; email/push alert when a scheduled run waits for approval
 - P1: Move files to object storage for multi-instance production
-- P2: Phase 3 virtual-desktop control of other apps; richer iframe support; parallel runs per user
+- P2: Phase 3 virtual-desktop control of other apps; richer iframe support; save groups across restarts

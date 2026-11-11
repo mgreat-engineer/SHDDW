@@ -70,6 +70,7 @@ export default function Workspace() {
 
   const switchGroup = useCallback((id) => {
     setGroup(id); setGroupState(id); setView("single");
+    delete lastStatus.current[lastRunByGroup.current[id]];
     setBstate(null); setRunId(lastRunByGroup.current[id] || null); setRun(null); lastActive.current = null;
   }, []);
   useEffect(() => { if (groups.length && !current) switchGroup("1"); }, [groups, current, switchGroup]);

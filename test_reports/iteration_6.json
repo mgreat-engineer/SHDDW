@@ -1,0 +1,26 @@
+{
+  "summary": "Retest of the iteration-5 fixes (cloud target). Backend: the new tests/test_iter6_fixes.py passes 7 of 7. It covers random 8-char hex group ids that are unique across creates, stale paused runs not attaching to new groups, DELETE of an unknown group returning 404 and of group 1 returning 400, and resume. Resume of a stopped run whose group was closed recreates the group with the same id and the name 'Resumed: ...', and the run completed with 'The page title is: Example Domain'. Resume of a failed run returns 409 while another run is active in its group and 200 once that run is stopped. Resume of a completed run returns 400. Regression: test_iter5_groups.py passes 11 of 11 (the parallel GPT test was not run) after one test was updated for the new id format; test_shadow_api.py passes 20 of 20. UI: every fix verified. FIX4: coming back to group B shows the run summary. FIX5: a toast 'Group 2: Task finished' appears while on Main, and 'Group 2 has a question' for waiting_input. FIX6: the placeholder names the group in single view, grid view and the solo page. FIX7: the recording dot turns red about 0.2s after Watch me and goes back about 0.2s after Stop. Resume from History of another group's run switches the UI to that group. Light regression passed: create, rename, close, grid tiles and the solo page (no rail or group bar, title 'Shadow · <name>'). Bonus: a backend hot reload during testing wiped the in-memory groups, and the recreated groups got fresh hex ids with no stale run attached, which confirms FIX1 in a real restart. Cleanup done: only Main remains and no runs are active.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Workspace pollRun / notifyOther", "issue": "Duplicate toast. When a background group's task finishes, 'Group 2: Task finished' appears, which is correct. On switching back to that group, a second generic 'Task finished' toast appears because lastStatus[runId] still holds 'running' from before the switch, so pollRun sees a status change. Fix: when switching groups, prime lastStatus for the restored runId, or skip the alert when the run already finished while in the background.", "selector": "[data-sonner-toast]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter6_fixes.py", "/app/backend/tests/test_iter5_groups.py", "/app/tests/mk_stopped_run.py", "/app/test_reports/pytest/iter6_fixes.xml"],
+  "action_items": ["Optional (LOW): suppress the duplicate generic 'Task finished' toast after returning to a group whose background task already produced a group-named toast."],
+  "critical_code_review_comments": [
+    "lastRunByGroup is an in-memory ref, so after a page reload a group's finished run is not shown until a new run starts. Consider GET /runs/latest?group=.",
+    "useGroups only notifies on transitions it saw. A background run that starts and finishes within one 2.5s poll gives no toast.",
+    "runs_resume calls group_new with gid, so if the user already has 10 groups, resuming a run whose group was closed returns 409 'up to 10 window groups'. That is acceptable, but the message could mention resume.",
+    "server.py is still about 990 lines. Split it into routers.",
+    "Any file written under /app/backend (including tests/) triggers a uvicorn hot reload, which wipes all in-memory browser groups. Keep helper scripts outside /app/backend while testing."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter6_fixes.py (new)", "/app/backend/tests/test_iter5_groups.py (invalid group param test: 'abc' is now a valid id format so it returns 404; 'AB_!' returns 422)", "/app/tests/mk_stopped_run.py (new helper)"],
+  "success_rate": {"backend": "100%", "frontend": "100% (1 low-priority duplicate toast)"},
+  "seed_data_creation": "None kept. TEST_ stale runs were inserted into DB.runs and deleted by id; TEST_ groups were closed. Real GPT runs created by the tests ('open example.com ...') remain in history.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the backend tests serially: pytest tests/test_iter6_fixes.py -n 0. Group ids are now 8-char hex and group 1 is Main. Do not create files under /app/backend during UI tests, because the hot reload wipes the groups. UI sign-in: python /app/tests/clerk_token.py shadow.a+clerk_test@example.com ticket, then open /sign-in?__clerk_ticket=<ticket> (one ticket per browser session)."
+}

@@ -97,8 +97,11 @@ class TestGroupsCrud:
         assert r.status_code == 404
 
     def test_invalid_group_param_422(self, A):
-        r = A.get(f"{API}/browser/state", params={"group": "abc"})
+        # iter6: ids are now hex strings; pattern ^[a-z0-9]{1,12}$ -> bad chars 422, unknown valid id 404
+        r = A.get(f"{API}/browser/state", params={"group": "AB_!"})
         assert r.status_code == 422
+        r = A.get(f"{API}/browser/state", params={"group": "abc"})
+        assert r.status_code == 404
 
     def test_max_10(self, A, created):
         existing = len(A.get(f"{API}/browser/groups").json()["groups"])
