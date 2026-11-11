@@ -17,7 +17,12 @@ VIEWPORT = {"width": 1280, "height": 800}
 _pw = None
 _pw_lock = asyncio.Lock()
 _sessions: dict = {}
-_sessions_lock = asyncio.Lock()
+_session_locks: dict = {}
+
+
+def live_session(user_id):
+    s = _sessions.get(user_id)
+    return s if s and not s.closed else None
 
 RECORDER_JS = r"""
 (() => {
@@ -1091,7 +1096,7 @@ async def get_session(user_id: str, db) -> BrowserSession:
     await ensure_browser_installed()
     if not _install_state["ready"]:
         raise RuntimeError("the browser could not be installed on this server")
-    async with _sessions_lock:
+    async with _session_locks.setdefault(user_id, asyncio.Lock()):
         s = _sessions.get(user_id)
         if s and not s.closed:
             return s

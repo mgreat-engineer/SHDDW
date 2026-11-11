@@ -472,10 +472,34 @@ async def persist(uid, b, target=None):
     await sb.save_workspaces(db, uid, target or await target_of(uid), b)
 
 
+_warming: set = set()
+
+
+async def prewarm(uid):
+    if uid in _warming:
+        return
+    _warming.add(uid)
+    try:
+        await sb.get_session(uid, db)
+    except Exception as e:
+        log.warning("prewarm %s: %s", uid, e)
+    finally:
+        _warming.discard(uid)
+
+
+async def saved_groups(uid, target):
+    keep = ("id", "name", "label", "url", "tabs", "urls", "active")
+    groups = [{k: g.get(k) for k in keep} | {"recording": False} for g in await sb.load_workspaces(db, uid, target)]
+    return groups or [{"id": "1", "name": "Main", "label": "", "url": "", "tabs": 0, "urls": [], "active": 0, "recording": False}]
+
+
 @api.get("/browser/groups")
 async def groups_list(uid: str = Depends(uid_of)):
-    b = await session(uid, whole=True)
-    groups = await bcall(b.groups_list(), 503)
+    target = await target_of(uid)
+    b = (hub.get(uid) and RemoteSession(hub.get(uid))) if target == "laptop" else sb.live_session(uid)
+    groups = await bcall(b.groups_list(), 503) if b else await saved_groups(uid, target)
+    if not b and target == "cloud":
+        asyncio.create_task(prewarm(uid))
     runs = await db.runs.find({"user_id": uid, "status": {"$in": ACTIVE}}, {"_id": 0, "id": 1, "status": 1, "goal": 1, "group_id": 1}).to_list(50)
     by = {r.get("group_id", "1"): r for r in runs}
     return {"groups": [{**g, "run": by.get(g["id"])} for g in groups], "max": sb.MAX_GROUPS}

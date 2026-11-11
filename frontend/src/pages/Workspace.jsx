@@ -126,7 +126,7 @@ export default function Workspace() {
   useEffect(() => { api.get("/status").then((r) => setStatus(r.data)).catch(() => {}); }, [api]);
 
   const loadTarget = useCallback(() => api.get("/target").then((r) => setTarget(r.data)).catch(() => {}), [api]);
-  useEffect(() => { loadTarget(); const t = setInterval(loadTarget, 4000); return () => clearInterval(t); }, [loadTarget]);
+  useEffect(() => { loadTarget(); const t = setInterval(() => !document.hidden && loadTarget(), 4000); return () => clearInterval(t); }, [loadTarget]);
   const changeTarget = async (t) => {
     if (!t) return loadTarget();
     try { const r = await api.put("/target", { target: t }); setTarget(r.data); toast.success(t === "laptop" ? "Shadow now works on your laptop" : "Shadow now works in the cloud"); }
@@ -161,9 +161,9 @@ export default function Workspace() {
 
   useEffect(() => {
     pollActive(); pollRun();
-    const t = setInterval(() => { pollActive(); pollRun(); }, 1500);
+    const t = setInterval(() => { pollActive(); pollRun(); }, screen === "home" ? 4000 : 1500);
     return () => clearInterval(t);
-  }, [pollActive, pollRun]);
+  }, [pollActive, pollRun, screen]);
 
   const startRun = async (payload) => {
     try {

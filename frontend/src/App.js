@@ -1,11 +1,14 @@
 import "@/App.css";
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Show, SignIn, SignUp } from "@clerk/react";
 import ClerkAuthProvider from "@/components/auth/ClerkAuthProvider";
 import AuthLayout from "@/pages/AuthLayout";
-import Workspace from "@/pages/Workspace";
 import Landing from "@/pages/Landing";
 import { Toaster } from "@/components/ui/sonner";
+
+const Workspace = lazy(() => import("@/pages/Workspace"));
+const Loading = () => <div className="h-screen flex items-center justify-center text-sm text-[#5F6368]" data-testid="app-loading">Loading Shadow…</div>;
 
 const IN_APP = (() => {
   if (new URLSearchParams(window.location.search).get("app") === "1") sessionStorage.setItem("shadow-app", "1");
@@ -15,7 +18,7 @@ const IN_APP = (() => {
 function Home() {
   return (
     <>
-      <Show when="signed-in"><Workspace /></Show>
+      <Show when="signed-in"><Suspense fallback={<Loading />}><Workspace /></Suspense></Show>
       <Show when="signed-out">{IN_APP ? <Navigate to="/sign-in" replace /> : <Landing />}</Show>
     </>
   );
