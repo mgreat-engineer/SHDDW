@@ -84,7 +84,10 @@ export default function Workspace() {
 
   const bump = () => setRefresh((n) => n + 1);
 
+  const [finished, setFinished] = useState({});
   const notifyOther = useCallback((g, st, full) => {
+    if (full) setFinished((f) => ({ ...f, [g.id]: st }));
+    else if (st) setFinished((f) => (f[g.id] ? { ...f, [g.id]: null } : f));
     if (g.id === getGroup()) return;
     if (NEEDS[st]) notify(`${g.name} ${NEEDS[st]}`, g.run?.goal || "");
     else if (full && ALERT[st]) notify(`${g.name}: ${ALERT[st]}`, full.summary || full.goal);
@@ -191,9 +194,12 @@ export default function Workspace() {
 
   if (screen === "home") return (
     <>
-      <HomeScreen groups={groups} max={max} selected={group} onSelect={switchGroup}
+      <HomeScreen finished={finished} groups={groups} max={max} selected={group} onSelect={switchGroup}
         onRun={(id, command) => { switchGroup(id); startRun({ command }); }}
-        onOpen={(id) => { switchGroup(id); setScreen("browser"); }}
+        onOpen={(id) => {
+          switchGroup(id); setScreen("browser");
+          if (!lastRunByGroup.current[id]) api.get("/runs").then((r) => { const last = r.data.find((x) => (x.group_id || "1") === id); if (last && getGroup() === id && !lastActive.current) { lastRunByGroup.current[id] = last.id; setRunId(last.id); } }).catch(() => {});
+        }}
         onEdit={(g) => setWsDialog(g)} onClose={closeGroup} onNew={() => setWsDialog({})}
         onPauseAll={() => allRuns("pause")} onResumeAll={() => allRuns("resume")}
         banner={<>{banner}<UpdateBanner target={target} /></>}

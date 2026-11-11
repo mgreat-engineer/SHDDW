@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 17 (frontend only): new Home screen flow. All requested features PASS at 1920x1080: after Clerk ticket sign-in '/' shows home-screen (title 'What should I do next?', home-task-box, workspace-cards), no browser view rendered. Cards show name + status (PAUSED/QUESTION/WORKING/IDLE); hover reveals edit/popout/close (no close on id 1, close present on new ws). workspace-card-new -> dialog -> TEST_HomeWS created, card added, picker auto-selects it; rename via card edit works (prefilled). Picker lists all workspaces; selecting CTO WORKSPACE (waiting_input) switches placeholder to 'Reply to CTO WORKSPACE's question…' and button to 'Reply'. Empty input disables Run. Enter submits -> POST /api/runs?group=<new id>, toast 'Shadow is on it in TEST_HomeWS2', input cleared, card status -> WORKING (OpenAI configured; run completed with summary 'The title of example.com is: Example Domain'). Pause all disabled when nothing running; Resume all -> toast 'Resumed 2 workspace task(s)', statuses -> WORKING. All 10 home-nav icons open home-panel-sheet (380px left sheet) with correct side-panel-title; side-panel-collapse-button and Escape close it. Clicking a card opens full browser view (workspace) for that workspace with side-rail, left-panel, group-bar, command-bar ('Tell Shadow what to do in TEST_HomeWS2'), activity-panel; back-to-home-button returns home. Close workspace from card -> toast, card removed, picker falls back to Main. ?solo=1 skips home (solo-group-name, no back button). Reload '/' -> home. No page errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "HomeScreen header (mobile 390px)", "issue": "Header row (logo + 10 nav icons + UserButton) does not wrap/scroll; only ~6 icons visible, History/Passwords/Permissions/Laptop icons and the user menu (sign-out) are clipped off-screen and unreachable on phones. Make icon menu horizontally scrollable, collapse into an overflow menu, or wrap.", "selector": "[data-testid='home-icon-menu'], [data-testid='user-menu']", "priority": "MEDIUM"},
+      {"component": "WorkspaceCards", "issue": "Card names truncate heavily ('CTO WORKS...', 'TEST_Home...') at 4-column desktop grid because the hidden (opacity-0) edit/popout/close buttons still reserve width. Consider absolute-positioning the hover actions or showing full name on second line / title attr.", "selector": "[data-testid^='workspace-card-name-']", "priority": "LOW"},
+      {"component": "WorkspaceCards (touch)", "issue": "Edit/popout/close and 'Watch' are hover-only (opacity-0 group-hover); on touch devices rename/close workspace from home is not discoverable.", "selector": "[data-testid^='workspace-card-edit-']", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Run finishes while on home", "issue": "When a run completes, the card goes straight from WORKING to IDLE (groups only expose active run), so the user on home never sees 'Done' or the summary unless opening the workspace; and on a fresh session opening that workspace shows activity 'No task yet' because lastRunByGroup is in-memory. Consider showing last run status (Done/Failed) on the card for a while and loading last run per group on open.", "affected_selectors": ["[data-testid^='workspace-card-status-']", "[data-testid='activity-empty']"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Medium) Fix mobile header overflow on home: nav icons + user menu are clipped at 390px width",
+    "(Low) Avoid name truncation on workspace cards caused by invisible hover buttons reserving space",
+    "(Low) Show completed/failed status on card after run ends and load last run of a workspace when opened from home",
+    "(Low) Make card actions accessible on touch devices"
+  ],
+  "critical_code_review_comments": [
+    "Workspace.jsx home onRun: switchGroup(id) then startRun relies on setGroup mutating the api module's currentGroup synchronously - works (verified POST /api/runs?group=<id>), but fragile; pass group explicitly as a param.",
+    "HomeScreen's panelProps duplicates SidePanel callbacks already defined for the browser view (onRunSkill/onPreviewSkill/onTemplateOpened) - extract shared object to keep both in sync (DRY).",
+    "onRunSkill from home sheet starts the run but stays on home with sheet open; fine, but no visual feedback other than toast."
+  ],
+  "updated_files": ["/app/test_reports/iteration_17.json"],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100% of requested flows; 1 medium mobile layout bug"},
+  "seed_data_creation": "Created workspace TEST_HomeWS (renamed TEST_HomeWS2, id c13e5b59) and one run in it ('TEST open example.com...', completed); workspace closed afterwards. DATA CHANGE DEFECT (caused by testing Resume all): user's pre-existing paused runs in 'Main' ('help me search for grants on google') and 'CTO WORKSPACE' ('OPEN ICANOTE +') were resumed. Main was re-paused via /api/runs/pause-all (restored to paused); CTO WORKSPACE run progressed to waiting_input (asking a question) instead of paused - user may need to stop/answer it.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Sign in via `python /app/tests/clerk_token.py shadow.a+clerk_test@example.com ticket` then /sign-in?__clerk_ticket=... ; lands on home-screen. Existing workspaces: 1 Main (paused run), e920e5f6 CTO WORKSPACE (waiting_input). Avoid clicking Resume all - it resumes the user's real paused runs. Sheet open animation needs ~1s before screenshot."
+}
