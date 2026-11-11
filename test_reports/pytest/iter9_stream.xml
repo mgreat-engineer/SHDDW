@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="13" time="96.032" timestamp="2026-11-11T05:08:24.671443+00:00" hostname="agent-env-b29d45f2-9e43-4449-9a95-de8626b03cec"><testcase classname="tests.test_iter9_stream" name="test_invalid_token_closes_4401" time="0.189"><failure message="AssertionError: expected close 4401, got ('http', 403)&#10;assert ('http', 403) == ('closed', 4401)&#10;  &#10;  At index 0 diff: 'http' != 'closed'&#10;  Use -v to get more diff">def test_invalid_token_closes_4401():
+        async def go():
+            try:
+                async with websockets.connect(f"{WS}?token=bad&amp;group=1") as ws:
+                    await ws.recv()
+            except websockets.exceptions.ConnectionClosed as e:
+                return ("closed", e.rcvd.code if e.rcvd else None)
+            except websockets.exceptions.InvalidStatus as e:
+                return ("http", e.response.status_code)
+            except Exception as e:  # noqa
+                return ("other", repr(e))
+        res = run(go())
+        print("invalid token -&gt;", res)
+&gt;       assert res == ("closed", 4401), f"expected close 4401, got {res}"
+E       AssertionError: expected close 4401, got ('http', 403)
+E       assert ('http', 403) == ('closed', 4401)
+E         
+E         At index 0 diff: 'http' != 'closed'
+E         Use -v to get more diff
+
+tests/test_iter9_stream.py:73: AssertionError</failure></testcase><testcase classname="tests.test_iter9_stream" name="test_bad_group_closes_4400" time="0.894"><failure message="AssertionError: expected 4400, got ('http', 403)&#10;assert ('http', 403) == ('closed', 4400)&#10;  &#10;  At index 0 diff: 'http' != 'closed'&#10;  Use -v to get more diff">def test_bad_group_closes_4400():
+        t = token()
+    
+        async def go():
+            try:
+                async with websockets.connect(f"{WS}?token={t}&amp;group=BAD!!") as ws:
+                    await ws.recv()
+            except websockets.exceptions.ConnectionClosed as e:
+                return ("closed", e.rcvd.code if e.rcvd else None)
+            except websockets.exceptions.InvalidStatus as e:
+                return ("http", e.response.status_code)
+            except Exception as e:  # noqa
+                return ("other", repr(e))
+        res = run(go())
+        print("bad group -&gt;", res)
+&gt;       assert res == ("closed", 4400), f"expected 4400, got {res}"
+E       AssertionError: expected 4400, got ('http', 403)
+E       assert ('http', 403) == ('closed', 4400)
+E         
+E         At index 0 diff: 'http' != 'closed'
+E         Use -v to get more diff
+
+tests/test_iter9_stream.py:91: AssertionError</failure></testcase><testcase classname="tests.test_iter9_stream" name="test_unknown_group_sends_error" time="1.316" /><testcase classname="tests.test_iter9_stream" name="test_stream_fps_and_resize" time="19.312" /><testcase classname="tests.test_iter9_stream" name="test_inputs_drive_page" time="9.392" /><testcase classname="tests.test_iter9_stream" name="test_type_and_key_via_ws" time="5.036" /><testcase classname="tests.test_iter9_stream" name="test_stream_follows_tab_switch" time="13.483" /><testcase classname="tests.test_iter7_workspaces.TestLabels" name="test_create_with_label_and_edit" time="1.717" /><testcase classname="tests.test_iter7_workspaces.TestCookieIsolation" name="test_isolation" time="4.745" /><testcase classname="tests.test_iter7_workspaces.TestPauseAll" name="test_pause_resume_all" time="32.788" /><testcase classname="tests.test_iter7_workspaces.TestPauseAll" name="test_pause_all_none" time="0.073" /><testcase classname="tests.test_iter7_workspaces.TestPromptLabel" name="test_agent_knows_client" time="4.563" /><testcase classname="tests.test_iter7_workspaces" name="test_unauth_401" time="2.429" /></testsuite></testsuites>

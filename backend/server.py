@@ -980,6 +980,7 @@ async def helper_pair(body: PairIn):
 @app.websocket("/api/browser/stream")
 async def browser_stream(ws: WebSocket, token: str = "", group: str = "1"):
     from clerk_auth import verify_session_token
+    await ws.accept()
     try:
         uid = verify_session_token(token)["sub"]
     except Exception:
@@ -988,7 +989,6 @@ async def browser_stream(ws: WebSocket, token: str = "", group: str = "1"):
     if not re.match(r"^[a-z0-9]{1,12}$", group):
         await ws.close(code=4400)
         return
-    await ws.accept()
     if await target_of(uid) == "laptop":
         await ws.send_json({"type": "fallback"})
         await ws.close()

@@ -132,7 +132,7 @@ export default function BrowserView({ mode, state, onState, onTakeOver, target, 
         {layout && <>
           {!layout.noLeft && <ToolBtn testId="toggle-left-panel" title={layout.left ? "Hide side panel" : "Show side panel"} onClick={layout.toggleLeft} active={layout.left}><PanelLeft className="h-4 w-4" /></ToolBtn>}
           <ToolBtn testId="toggle-right-panel" title={layout.right ? "Hide activity" : "Show activity"} onClick={layout.toggleRight} active={layout.right}><PanelRight className="h-4 w-4" /></ToolBtn>
-          <ToolBtn testId="toggle-workspace-bar" title={layout.bar ? "Full screen browser" : "Exit full screen"} onClick={layout.toggleBar}>{layout.bar ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}</ToolBtn>
+          {!layout.noLeft && <ToolBtn testId="toggle-workspace-bar" title={layout.bar ? "Full screen browser" : "Exit full screen"} onClick={layout.toggleBar}>{layout.bar ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}</ToolBtn>}
         </>}
       </div>
       <DialogBar dialog={state?.dialog} onDone={loadState} />

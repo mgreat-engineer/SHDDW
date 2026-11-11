@@ -12,7 +12,7 @@ export default function HistoryPanel({ refresh, onSelect, selectedId }) {
       {runs.length === 0 && <p className="text-sm text-[#80868B]" data-testid="history-empty">No runs yet.</p>}
       {runs.map((r) => (
         <button key={r.id} onClick={() => onSelect(r.id)} data-testid={`history-item-${r.id}`}
-          className={`w-full text-left rounded-lg border p-3 transition-colors ${selectedId === r.id ? "border-[#1A73E8]/50 bg-[#1A73E8]/5" : "border-[#DADCE0] bg-white hover:border-slate-600"}`}>
+          className={`w-full text-left rounded-lg border p-3 transition-colors ${selectedId === r.id ? "border-[#1A73E8]/50 bg-[#1A73E8]/5" : "border-[#DADCE0] bg-white hover:border-[#BDC1C6]"}`}>
           <div className="flex items-start justify-between gap-2">
             <p className="text-sm leading-snug line-clamp-2">{r.goal}</p>
             <StatusBadge status={r.status} testId={`history-status-badge-${r.id}`} />

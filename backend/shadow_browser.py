@@ -213,14 +213,13 @@ class Group:
 
     async def set_viewport(self, width, height):
         vp = {"width": max(640, min(int(width), 2560)), "height": max(400, min(int(height), 1600))}
-        if vp == self.viewport:
-            return vp
-        self.viewport = vp
         for p in self.pages():
-            try:
-                await p.set_viewport_size(vp)
-            except Exception:
-                pass
+            if p.viewport_size != vp:
+                try:
+                    await p.set_viewport_size(vp)
+                except Exception:
+                    pass
+        self.viewport = vp
         return vp
 
     @property
@@ -422,6 +421,11 @@ class Group:
                     await stop()
                     cur, cdp = key, None
                     if page:
+                        if page.viewport_size != self.viewport:
+                            try:
+                                await page.set_viewport_size(self.viewport)
+                            except Exception:
+                                pass
                         try:
                             await send(await page.screenshot(type="jpeg", quality=quality, timeout=4000))
                         except Exception:

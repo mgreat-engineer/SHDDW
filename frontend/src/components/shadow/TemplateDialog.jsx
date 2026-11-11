@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApi, errMsg } from "@/lib/api";
 
 const field = "w-full bg-[#F1F3F4] border border-[#DADCE0] rounded-lg px-3 py-2 text-sm outline-none focus:border-[#1A73E8]/50 transition-colors mt-1";
@@ -32,12 +33,15 @@ export default function TemplateDialog({ initial, onClose, onSaved }) {
           <label className="block text-xs text-[#5F6368]">Template name<input autoFocus value={f.name} onChange={set("name")} maxLength={60} className={field} data-testid="template-name-input" /></label>
           <label className="block text-xs text-[#5F6368]">Client or company<input value={f.label} onChange={set("label")} maxLength={80} className={field} data-testid="template-label-input" /></label>
           <label className="block text-xs text-[#5F6368]">Sites to open (one per line)<textarea value={f.sites} onChange={set("sites")} rows={4} className={`${field} font-mono text-xs`} data-testid="template-sites-input" /></label>
-          <label className="block text-xs text-[#5F6368]">Start a skill when it opens (optional)
-            <select value={f.skill_id} onChange={set("skill_id")} className={field} data-testid="template-skill-select">
-              <option value="">Don't start anything</option>
-              {skills.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </label>
+          <div className="block text-xs text-[#5F6368]">Start a skill when it opens (optional)
+            <Select value={f.skill_id || "none"} onValueChange={(v) => setF({ ...f, skill_id: v === "none" ? "" : v })}>
+              <SelectTrigger className="mt-1 bg-[#F1F3F4]" data-testid="template-skill-select"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Don't start anything</SelectItem>
+                {skills.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
           {f.skill_id && <label className="block text-xs text-[#5F6368]">Extra instructions for the skill<textarea value={f.instructions} onChange={set("instructions")} rows={2} className={field} data-testid="template-instructions-input" /></label>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="text-sm px-4 py-2 rounded-lg border border-[#DADCE0] text-[#3C4043] hover:bg-[#F1F3F4]" data-testid="template-cancel-button">Cancel</button>

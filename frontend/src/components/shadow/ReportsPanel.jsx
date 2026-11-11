@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { useApi, fmtTime } from "@/lib/api";
 import StatusBadge from "./StatusBadge";
 
@@ -32,8 +34,17 @@ export default function ReportsPanel({ refresh, onSelectRun }) {
     <div className="space-y-3" data-testid="reports-panel">
       <div className="flex items-center gap-2">
         <button onClick={() => setDate(shift(date, -1))} className={nav} data-testid="report-prev-day"><ChevronLeft className="h-3.5 w-3.5" /></button>
-        <input type="date" value={date} max={today()} onChange={(e) => e.target.value && setDate(e.target.value)} data-testid="report-date-input"
-          className="flex-1 bg-white border border-[#DADCE0] rounded-md px-2 py-1 text-xs font-mono text-[#202124] outline-none [color-scheme:light]" />
+        <Popover>
+          <PopoverTrigger asChild>
+            <button data-testid="report-date-input" className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-[#DADCE0] rounded-md px-2 py-1 text-xs text-[#202124] hover:bg-[#F1F3F4]">
+              <CalendarDays className="h-3.5 w-3.5 text-[#5F6368]" />{new Date(`${date}T12:00:00`).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="center">
+            <Calendar mode="single" selected={new Date(`${date}T12:00:00`)} disabled={{ after: new Date() }}
+              onSelect={(d) => d && setDate(d.toLocaleDateString("en-CA"))} initialFocus data-testid="report-calendar" />
+          </PopoverContent>
+        </Popover>
         <button onClick={() => setDate(shift(date, 1))} disabled={date >= today()} className={nav} data-testid="report-next-day"><ChevronRight className="h-3.5 w-3.5" /></button>
       </div>
       {!data ? <p className="text-sm text-[#80868B] animate-pulse">Loading report…</p> : (
