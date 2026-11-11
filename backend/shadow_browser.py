@@ -209,6 +209,19 @@ class Group:
         self.pending_chooser = None
         self.events = []
         self.last_frame = None
+        self.viewport = dict(VIEWPORT)
+
+    async def set_viewport(self, width, height):
+        vp = {"width": max(640, min(int(width), 2560)), "height": max(400, min(int(height), 1600))}
+        if vp == self.viewport:
+            return vp
+        self.viewport = vp
+        for p in self.pages():
+            try:
+                await p.set_viewport_size(vp)
+            except Exception:
+                pass
+        return vp
 
     @property
     def closed(self):
@@ -289,6 +302,8 @@ class Group:
             page.on("filechooser", self._on_chooser)
             page.on("framenavigated", lambda fr, p=page: self._on_nav(p, fr))
             page.on("close", self._on_page_close)
+            if self.viewport != VIEWPORT:
+                asyncio.ensure_future(page.set_viewport_size(self.viewport))
         if focus:
             self.active = self.pages().index(page) if not page.is_closed() else self.active
 
@@ -365,7 +380,7 @@ class Group:
             "recorded_count": len(self.recording or []),
             "dialog": {"type": dlg.type, "message": dlg.message, "default": dlg.default_value} if dlg else None,
             "file_chooser": bool(self.pending_chooser),
-            "viewport": VIEWPORT,
+            "viewport": self.viewport,
         }
 
     async def frame(self, quality=60):
@@ -375,6 +390,50 @@ class Group:
         except Exception:
             pass
         return self.last_frame
+
+    async def stream(self, send, alive, quality=70):
+        """Push live JPEG frames of the active tab via Chrome's screencast (follows tab switches)."""
+        import base64
+        cur, cdp = None, None
+
+        async def on_frame(c, ev):
+            try:
+                await send(base64.b64decode(ev["data"]))
+            except Exception:
+                pass
+            finally:
+                try:
+                    await c.send("Page.screencastFrameAck", {"sessionId": ev["sessionId"]})
+                except Exception:
+                    pass
+
+        async def stop():
+            if cdp:
+                try:
+                    await cdp.send("Page.stopScreencast")
+                    await cdp.detach()
+                except Exception:
+                    pass
+        try:
+            while alive():
+                page = self.page()
+                key = (page, self.viewport["width"], self.viewport["height"])
+                if key != cur:
+                    await stop()
+                    cur, cdp = key, None
+                    if page:
+                        try:
+                            await send(await page.screenshot(type="jpeg", quality=quality, timeout=4000))
+                        except Exception:
+                            pass
+                        cdp = await self.ctx.new_cdp_session(page)
+                        cdp.on("Page.screencastFrame", lambda ev, c=cdp: asyncio.ensure_future(on_frame(c, ev)))
+                        await cdp.send("Page.startScreencast", {"format": "jpeg", "quality": quality, "everyNthFrame": 1,
+                                                                "maxWidth": self.viewport["width"], "maxHeight": self.viewport["height"]})
+                self.touch()
+                await asyncio.sleep(0.25)
+        finally:
+            await stop()
 
     async def settle(self):
         page = self.page()
@@ -474,6 +533,7 @@ class Group:
             "type": lambda: page.keyboard.type(text or ""),
             "key": lambda: page.keyboard.press(key),
             "scroll": lambda: page.mouse.wheel(0, dy or 0),
+            "move": lambda: page.mouse.move(x, y),
         }
         if kind not in acts:
             raise ValueError("Unknown input")

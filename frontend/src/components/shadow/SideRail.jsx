@@ -14,18 +14,18 @@ export const PANELS = [
   { id: "laptop", label: "Laptop", icon: Laptop },
 ];
 
-export default function SideRail({ panel, setPanel }) {
+export default function SideRail({ panel, setPanel, open = true }) {
   return (
     <TooltipProvider delayDuration={150}>
-      <nav className="w-14 shrink-0 border-r border-[#262B3D] bg-[#0C0E15] flex flex-col items-center py-4 gap-2 relative z-10" data-testid="side-rail">
-        <div className="h-9 w-9 mb-4 rounded-lg bg-[#00F0FF]/10 border border-[#00F0FF]/40 flex items-center justify-center" title="Shadow">
-          <div className="h-2.5 w-2.5 rounded-full bg-[#00F0FF] shadow-[0_0_14px_#00F0FF]" />
+      <nav className="w-14 shrink-0 border-r border-[#DADCE0] bg-[#F8F9FA] flex flex-col items-center py-4 gap-2 relative z-10" data-testid="side-rail">
+        <div className="h-9 w-9 mb-4 rounded-full bg-[#1A73E8] flex items-center justify-center" title="Shadow">
+          <div className="h-3 w-3 rounded-full bg-white" />
         </div>
         {PANELS.map(({ id, label, icon: Icon }) => (
           <Tooltip key={id}>
             <TooltipTrigger asChild>
               <button onClick={() => setPanel(id)} data-testid={`nav-${id}-link`}
-                className={`h-10 w-10 rounded-lg flex items-center justify-center transition-colors duration-200 ${panel === id ? "bg-[#00F0FF]/15 text-[#00F0FF]" : "text-slate-500 hover:text-slate-200 hover:bg-white/5"}`}>
+                className={`h-10 w-10 rounded-full flex items-center justify-center transition-colors duration-200 ${panel === id && open ? "bg-[#E8F0FE] text-[#1A73E8]" : "text-[#5F6368] hover:text-[#202124] hover:bg-[#E8EAED]"}`}>
                 <Icon className="h-[18px] w-[18px]" />
               </button>
             </TooltipTrigger>

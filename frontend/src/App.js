@@ -17,7 +17,7 @@ function Home() {
 
 function App() {
   return (
-    <div className="App dark">
+    <div className="App">
       <BrowserRouter>
         <ClerkAuthProvider>
           <Routes>
@@ -27,7 +27,7 @@ function App() {
           </Routes>
         </ClerkAuthProvider>
       </BrowserRouter>
-      <Toaster theme="dark" position="bottom-right" offset="110px" richColors />
+      <Toaster theme="light" position="bottom-right" offset="110px" richColors />
     </div>
   );
 }

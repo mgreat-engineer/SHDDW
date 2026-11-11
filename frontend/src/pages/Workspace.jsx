@@ -12,6 +12,20 @@ import ActivityPanel from "@/components/shadow/ActivityPanel";
 import ApprovalDialog from "@/components/shadow/ApprovalDialog";
 import SkillReviewDialog from "@/components/shadow/SkillReviewDialog";
 import UpdateBanner from "@/components/shadow/UpdateBanner";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+
+const HANDLE = "w-1 bg-[#DADCE0] hover:bg-[#1A73E8]/60 data-[resize-handle-state=drag]:bg-[#1A73E8] transition-colors";
+
+function useLayout() {
+  const leftRef = useRef(null);
+  const rightRef = useRef(null);
+  const [left, setLeft] = useState(true);
+  const [right, setRight] = useState(true);
+  const [bar, setBar] = useState(localStorage.getItem("shadow-bar") !== "0");
+  const flip = (ref) => { const p = ref.current; if (p) (p.isCollapsed() ? p.expand() : p.collapse()); };
+  const toggleBar = () => setBar((b) => { localStorage.setItem("shadow-bar", b ? "0" : "1"); return !b; });
+  return { leftRef, rightRef, left, right, bar, setLeft, setRight, toggleLeft: () => flip(leftRef), toggleRight: () => flip(rightRef), toggleBar };
+}
 
 const ALERT = { completed: "Task finished", failed: "Task failed", awaiting_approval: "Shadow needs your OK", waiting_input: "Shadow has a question" };
 
@@ -49,6 +63,12 @@ export default function Workspace() {
   const [view, setView] = useState("single");
   const [wsDialog, setWsDialog] = useState(null);
   const [panel, setPanel] = useState("skills");
+  const layout = useLayout();
+  const pickPanel = (id) => {
+    const p = layout.leftRef.current;
+    if (id === panel && p && !p.isCollapsed()) p.collapse();
+    else { setPanel(id); p?.expand(); }
+  };
   const [bstate, setBstate] = useState(null);
   const [status, setStatus] = useState(null);
   const [runId, setRunId] = useState(null);
@@ -160,32 +180,47 @@ export default function Workspace() {
   const mode = bstate?.recording ? "recording" : isRunning ? "agent" : "manual";
 
   return (
-    <div className="h-screen flex bg-[#08090E] text-slate-100 overflow-hidden grain" data-testid="workspace">
-      {!SOLO && <SideRail panel={panel} setPanel={setPanel} />}
-      {!SOLO && <SidePanel panel={panel} refresh={refresh} onRunSkill={(s) => startRun({ skill_id: s.id, command: "" })}
+    <div className="h-screen flex bg-white text-[#202124] overflow-hidden" data-testid="workspace">
+      {!SOLO && <SideRail panel={panel} setPanel={pickPanel} open={layout.left} />}
+      <ResizablePanelGroup direction="horizontal" autoSaveId={SOLO ? "shadow-layout-solo" : "shadow-layout"} className="flex-1 min-w-0">
+      {!SOLO && <>
+      <ResizablePanel id="left" order={1} ref={layout.leftRef} collapsible collapsedSize={0} minSize={14} maxSize={35} defaultSize={20}
+        onCollapse={() => layout.setLeft(false)} onExpand={() => layout.setLeft(true)} data-testid="left-panel">
+      <SidePanel panel={panel} refresh={refresh} onRunSkill={(s) => startRun({ skill_id: s.id, command: "" })}
         onPreviewSkill={(s) => startRun({ skill_id: s.id, command: "", mode: "preview" })}
-        onSelectRun={setRunId} selectedRunId={runId} target={target} onTarget={changeTarget}
-        currentWorkspace={current} onTemplateOpened={async (g, r) => { if (r) lastRunByGroup.current[g.id] = r.id; await loadGroups(); switchGroup(g.id); bump(); }} />}
-      <main className="flex-1 min-w-0 flex flex-col p-3 gap-3 relative z-10">
+        onSelectRun={setRunId} selectedRunId={runId} target={target} onTarget={changeTarget} onCollapse={layout.toggleLeft}
+        currentWorkspace={current} onTemplateOpened={async (g, r) => { if (r) lastRunByGroup.current[g.id] = r.id; await loadGroups(); switchGroup(g.id); bump(); }} />
+      </ResizablePanel>
+      <ResizableHandle className={HANDLE} data-testid="left-resize-handle" />
+      </>}
+      <ResizablePanel id="main" order={2} minSize={35}>
+      <main className="h-full min-w-0 flex flex-col p-2 gap-2 relative z-10 bg-[#F8F9FA]">
         {status && !status.openai_configured && (
-          <div className="rounded-lg border border-[#FFB000]/40 bg-[#FFB000]/10 text-[#FFB000] text-sm px-4 py-2" data-testid="openai-key-banner">
+          <div className="rounded-lg border border-[#B06000]/40 bg-[#B06000]/10 text-[#B06000] text-sm px-4 py-2" data-testid="openai-key-banner">
             OpenAI key not added yet — the browser works, but learning, commands and voice are off until the key is added.
           </div>
         )}
         {!SOLO && <UpdateBanner target={target} />}
         {SOLO ? (
-          <p className="text-xs font-mono uppercase tracking-widest text-slate-400" data-testid="solo-group-name">Workspace · <span className="text-[#00F0FF]">{current?.name || "…"}</span>{current?.label && <span className="text-slate-300"> · {current.label}</span>}</p>
-        ) : (
+          <p className="text-xs font-mono uppercase tracking-widest text-[#5F6368]" data-testid="solo-group-name">Workspace · <span className="text-[#1A73E8]">{current?.name || "…"}</span>{current?.label && <span className="text-[#3C4043]"> · {current.label}</span>}</p>
+        ) : layout.bar && (
           <GroupBar groups={groups} max={max} current={group} view={view} onView={setView} onSelect={switchGroup} onNew={() => setWsDialog({})} onClose={closeGroup} onEdit={(g) => setWsDialog(g)}
             onPauseAll={() => allRuns("pause")} onResumeAll={() => allRuns("resume")} />
         )}
-        {view === "grid" && !SOLO ? <GroupGrid groups={groups} onOpen={switchGroup} /> : (
-          <BrowserView key={group} mode={mode} onState={setBstate} state={bstate} onTakeOver={() => isRunning && runAction("pause")} target={target} onTarget={changeTarget} />
+        {view === "grid" && !SOLO && layout.bar ? <GroupGrid groups={groups} onOpen={switchGroup} /> : (
+          <BrowserView key={group} mode={mode} onState={setBstate} state={bstate} onTakeOver={() => isRunning && runAction("pause")} target={target} onTarget={changeTarget}
+            layout={SOLO ? { ...layout, noLeft: true } : layout} />
         )}
         <CommandBar recording={!!bstate?.recording} recorded={bstate?.recorded || []} recordedCount={bstate?.recorded_count || 0}
           waiting={run?.status === "waiting_input"} busy={isRunning} groupName={current?.name} onRecordChange={loadGroups} onRun={startRun} onRecorded={setRecorded} />
       </main>
-      <ActivityPanel run={run} onAction={runAction} onRunReal={(r) => startRun({ skill_id: r.skill_id, command: "" })} />
+      </ResizablePanel>
+      <ResizableHandle className={HANDLE} data-testid="right-resize-handle" />
+      <ResizablePanel id="right" order={3} ref={layout.rightRef} collapsible collapsedSize={0} minSize={16} maxSize={40} defaultSize={22}
+        onCollapse={() => layout.setRight(false)} onExpand={() => layout.setRight(true)} data-testid="right-panel">
+        <ActivityPanel run={run} onAction={runAction} onRunReal={(r) => startRun({ skill_id: r.skill_id, command: "" })} onCollapse={layout.toggleRight} />
+      </ResizablePanel>
+      </ResizablePanelGroup>
       <WorkspaceDialog open={!!wsDialog} workspace={wsDialog?.id ? wsDialog : null} onClose={() => setWsDialog(null)} onSave={saveWorkspace} />
       <ApprovalDialog run={run} onDecide={(decision) => runAction("approval", { decision })} />
       <SkillReviewDialog events={recorded} onClose={() => setRecorded(null)} onSaved={() => { setRecorded(null); setPanel("skills"); bump(); }} />

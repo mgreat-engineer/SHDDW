@@ -1,176 +1,154 @@
 {
-  "project_name": "Shadow",
-  "app_type": "saas_app",
-  "archetype": "THE PERFORMANCE PRO / TACTICAL MINIMALISM",
-  "theme_strategy": {
-    "default_mode": "dark",
-    "theme_switch_supported": true,
-    "primary_background": "#08090E",
-    "secondary_background": "#12141C",
-    "card_background": "#181B26",
-    "border_color": "#262B3D",
-    "accent_primary": "#00F0FF",
-    "recording_active_red": "#FF3B30",
-    "warning_amber": "#FFB000",
-    "success_emerald": "#00E676",
-    "purple_glow": "#8A2BE2",
-    "text_primary": "#F1F5F9",
-    "text_secondary": "#94A3B8",
-    "text_muted": "#64748B"
+  "theme": "Light",
+  "archetype": "Google Chrome Replica (Light Theme)",
+  "overview": "Redesign of Shadow AI browser assistant from dark neon (#0A0B10 / #00F0FF) to a crisp, modern Google Chrome Light UI (#DEE1E6 tab strip, white toolbar, #F1F3F4 omnibox, #1A73E8 Google blue accent). Features collapsible and resizable left/right panels, hideable workspace bar for full-screen browser view, plain arrow cursor for canvas, and sharp navigation arrows throughout.",
+  "colors": {
+    "tab_strip_bg": "#DEE1E6",
+    "tab_active_bg": "#FFFFFF",
+    "tab_inactive_hover": "#E3E5E8",
+    "toolbar_bg": "#FFFFFF",
+    "omnibox_bg": "#F1F3F4",
+    "omnibox_focus_bg": "#FFFFFF",
+    "omnibox_border": "#DADCE0",
+    "canvas_bg": "#F8F9FA",
+    "panel_bg": "#FFFFFF",
+    "panel_header_bg": "#F8F9FA",
+    "panel_border": "#DADCE0",
+    "text_primary": "#202124",
+    "text_secondary": "#5F6368",
+    "text_muted": "#80868B",
+    "accent_primary": "#1A73E8",
+    "accent_hover": "#1557B0",
+    "accent_light": "#E8F0FE",
+    "status": {
+      "success": "#1E8E3E",
+      "warning": "#F9AB00",
+      "error": "#D93025",
+      "info": "#1A73E8",
+      "idle": "#80868B"
+    },
+    "hsl_variables": {
+      "--background": "0 0% 100%",
+      "--foreground": "217 19% 14%",
+      "--card": "0 0% 100%",
+      "--card-foreground": "217 19% 14%",
+      "--popover": "0 0% 100%",
+      "--popover-foreground": "217 19% 14%",
+      "--primary": "217 89% 51%",
+      "--primary-foreground": "0 0% 100%",
+      "--secondary": "214 16% 96%",
+      "--secondary-foreground": "217 19% 14%",
+      "--muted": "214 16% 96%",
+      "--muted-foreground": "215 12% 46%",
+      "--accent": "217 89% 95%",
+      "--accent-foreground": "217 89% 51%",
+      "--destructive": "354 70% 54%",
+      "--destructive-foreground": "0 0% 100%",
+      "--border": "216 12% 84%",
+      "--input": "216 12% 84%",
+      "--ring": "217 89% 51%",
+      "--radius": "0.5rem"
+    }
   },
   "typography": {
-    "heading_font": "Outfit, sans-serif",
-    "body_font": "Plus Jakarta Sans, sans-serif",
-    "mono_font": "JetBrains Mono, monospace",
-    "google_fonts_url": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap",
-    "hierarchy": {
-      "h1": "text-4xl sm:text-5xl lg:text-5xl font-extrabold tracking-tight",
-      "h2": "text-2xl sm:text-3xl font-bold tracking-tight",
-      "h3": "text-xl sm:text-2xl font-semibold",
-      "h4": "text-lg font-medium",
-      "body": "text-sm sm:text-base leading-relaxed",
-      "small_label": "text-xs font-mono uppercase tracking-widest text-slate-400"
+    "fonts": {
+      "sans": "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+      "display": "'Outfit', sans-serif",
+      "mono": "'JetBrains Mono', monospace"
     },
-    "forbidden_fonts": [
-      "Inter",
-      "Space Grotesk"
-    ]
-  },
-  "layout_architecture": {
-    "overview": "Calm, focused command workspace dominated by a live browser viewport (Center-65%), surrounded by a slim left navigation sidebar (Skills/Memory/Files/History/Settings), a collapsible right activity & live log drawer, and a floating bottom command bar with live voice microphone visualizer.",
-    "grid_structure": "grid grid-cols-1 lg:grid-cols-12 gap-4 h-[calc(100vh-4rem)] p-4 bg-[#08090E]",
-    "key_panels": {
-      "live_browser_viewport": "col-span-1 lg:col-span-8 flex flex-col bg-[#0F111A] border border-[#262B3D] rounded-xl overflow-hidden shadow-2xl relative",
-      "right_activity_drawer": "col-span-1 lg:col-span-4 flex flex-col bg-[#12141C] border border-[#262B3D] rounded-xl overflow-hidden p-4 space-y-4",
-      "bottom_command_bar": "fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-3xl z-40 bg-[#181B26]/90 backdrop-blur-xl border border-[#00F0FF]/30 shadow-[0_10px_30px_rgba(0,0,0,0.8)] rounded-2xl p-3 flex items-center gap-3",
-      "recording_banner": "absolute top-3 right-3 z-30 flex items-center gap-2 bg-[#FF3B30]/20 border border-[#FF3B30]/50 text-[#FF3B30] px-3 py-1.5 rounded-full text-xs font-mono font-bold animate-pulse"
+    "scale": {
+      "h1": "text-2xl font-semibold tracking-tight text-[#202124]",
+      "h2": "text-xl font-semibold text-[#202124]",
+      "h3": "text-lg font-medium text-[#202124]",
+      "h4": "text-base font-medium text-[#202124]",
+      "body": "text-sm text-[#202124]",
+      "body_muted": "text-sm text-[#5F6368]",
+      "caption": "text-xs text-[#5F6368]",
+      "mono": "font-mono text-xs text-[#3C4043]"
     }
   },
-  "component_guidelines": {
-    "live_browser_remote": {
-      "description": "Interactive screenshot stream / HTML canvas feed showing active Chrome tabs, custom URL bar, tab manager, action markers (click targets, typed text overlays), and manual takeover toggle button.",
-      "required_elements": [
-        "Tab bar with active site favicon, tab title, close tab button, and '+' new tab button",
-        "URL address bar with back, forward, refresh buttons, SSL lock indicator, site URL input, and 'Take Over Control' toggle",
-        "Screen viewer overlay showing agent cursor (custom neon target icon) clicking elements or typing in real-time",
-        "Status badge ('Autonomous Mode', 'Learning User Routine', or 'Manual Mode')"
-      ]
+  "chrome_tab_strip": {
+    "container": "bg-[#DEE1E6] pt-1.5 px-2 flex items-center gap-1 border-b border-[#DADCE0] select-none h-10",
+    "active_tab": "bg-white text-[#202124] rounded-t-lg shadow-sm font-medium text-xs px-3.5 py-1.5 flex items-center gap-2 border-t border-x border-[#DADCE0] relative z-10 h-8",
+    "inactive_tab": "bg-transparent text-[#5F6368] hover:bg-[#E3E5E8] hover:text-[#202124] rounded-t-lg text-xs px-3.5 py-1.5 flex items-center gap-2 transition-colors h-8",
+    "tab_close_button": "p-0.5 rounded-full hover:bg-[#DADCE0] text-[#5F6368] hover:text-[#202124]",
+    "new_tab_button": "p-1.5 rounded-full hover:bg-[#E3E5E8] text-[#5F6368] hover:text-[#202124] ml-1 transition-colors"
+  },
+  "chrome_omnibox_toolbar": {
+    "container": "bg-white px-3 py-1.5 flex items-center gap-2 border-b border-[#DADCE0] h-12",
+    "nav_button": "p-1.5 rounded-full text-[#5F6368] hover:bg-[#F1F3F4] hover:text-[#202124] disabled:opacity-40 transition-colors",
+    "omnibox": "flex-1 bg-[#F1F3F4] hover:bg-[#E8EAED] focus-within:bg-white focus-within:shadow-md focus-within:ring-2 focus-within:ring-[#1A73E8] rounded-full px-4 py-1.5 flex items-center gap-2 text-sm transition-all border border-transparent focus-within:border-[#1A73E8]",
+    "omnibox_input": "w-full bg-transparent border-none outline-none text-[#202124] placeholder-[#5F6368] text-sm font-normal",
+    "lock_icon": "w-4 h-4 text-[#1E8E3E]"
+  },
+  "layout_and_panels": {
+    "left_rail": "w-12 bg-[#F8F9FA] border-r border-[#DADCE0] flex flex-col items-center py-2 gap-1 select-none z-20",
+    "rail_icon_button": "w-9 h-9 rounded-md flex items-center justify-center text-[#5F6368] hover:bg-[#E8EAED] hover:text-[#202124] active:bg-[#E8F0FE] active:text-[#1A73E8] transition-colors relative",
+    "rail_icon_active": "bg-[#E8F0FE] text-[#1A73E8] font-semibold",
+    "collapsible_side_panel": {
+      "container": "bg-white border-r border-[#DADCE0] flex flex-col h-full overflow-hidden transition-all duration-200 relative",
+      "header": "h-11 px-4 bg-[#F8F9FA] border-b border-[#DADCE0] flex items-center justify-between font-semibold text-sm text-[#202124]",
+      "body": "flex-1 overflow-y-auto p-4 thin-scroll bg-white"
     },
-    "watch_me_recording": {
-      "description": "Procedure recorder that observes user clicks, keystrokes, dialog dismissals, and downloads to automatically auto-synthesize reusable automation skills.",
-      "required_elements": [
-        "Red glowing RECORD button ('Watch Me')",
-        "Live step recorder ticker showing captured steps in real-time (e.g. 'Clicked #login-btn', 'Entered email into input')",
-        "Stop & Save Skill modal with skill name, natural language trigger description, and step parameters"
-      ]
+    "right_activity_panel": {
+      "container": "bg-white border-l border-[#DADCE0] flex flex-col h-full overflow-hidden transition-all duration-200 relative",
+      "header": "h-11 px-4 bg-[#F8F9FA] border-b border-[#DADCE0] flex items-center justify-between font-semibold text-sm text-[#202124]",
+      "body": "flex-1 overflow-y-auto p-4 thin-scroll bg-white"
     },
-    "skills_editor": {
-      "description": "Library of learned procedures with plain-language step inspector, step reordering, parameter variables ($EMAIL, $FILE_PATH), and run trigger tests.",
-      "required_elements": [
-        "Skill search & filter by category (Auth, Data Extraction, File Processing)",
-        "Step timeline editor with drag handle, action type dropdown, target selector, and fallback rule",
-        "'Execute Now' button with live progress progress bar"
-      ]
-    },
-    "approval_modal": {
-      "description": "High-priority safety modal for risky browser operations (e.g., submitting payments, deleting records, executing code, or uploading sensitive files).",
-      "required_elements": [
-        "Dark translucent overlay (`bg-black/80 backdrop-blur-md`)",
-        "High contrast danger border (`border-[#FF3B30]`)",
-        "Clear task detail card showing action URL, proposed payload, and risk level",
-        "Three distinct choices: 'Approve Action', 'Reject Task', and 'Always Allow for this Domain'",
-        "data-testid attributes for testing modal response"
-      ]
-    },
-    "command_bar_voice": {
-      "description": "Bottom natural language prompt input with voice microphone input button, active thinking state waveform visualizer, and agent mode switch.",
-      "required_elements": [
-        "Microphone button with audio activity ring effect when listening",
-        "Natural language prompt text input with placeholder 'Tell Shadow what to automate or research...'",
-        "'Run Shadow' submit button with cyan illumination",
-        "Quick prompt chip recommendations (e.g., 'Download monthly invoice', 'Log into portal & export CSV')"
-      ]
-    },
-    "memory_page": {
-      "description": "Persistent memory facts CRUD manager where Shadow remembers user credentials (encrypted), site workflows, modal handling preferences, and file destinations.",
-      "required_elements": [
-        "Memory category tabs (User Preferences, Site Credentials, Custom Selectors, Learned Workflows)",
-        "Searchable facts table with edit inline and copy buttons",
-        "'Add Memory Fact' dialog component"
-      ]
-    },
-    "files_panel": {
-      "description": "Integrated download & upload file repository synced with the browser's download manager and local storage.",
-      "required_elements": [
-        "Recent downloads list with file extension badges, size, timestamp, and 'Open File' / 'Re-upload to Agent' actions",
-        "Drag and drop target zone for quick file upload into agent browser session"
-      ]
-    },
-    "permissions_page": {
-      "description": "Granular safety and domain permission manager for browser automation.",
-      "required_elements": [
-        "Toggle cards for: Auto-download files, Auto-fill passwords, Dialog box auto-dismissal, Payment confirmation requirement"
-      ]
-    },
-    "settings_openai": {
-      "description": "Configuration center for OpenAI API key, browser viewport resolution, headless vs headful mode, and proxy settings.",
-      "required_elements": [
-        "Masked OpenAI API Key input with test connection status pill",
-        "Model selection dropdown (e.g. gpt-4o, gpt-4o-mini, o3-mini)",
-        "Save settings notification toast integration"
-      ]
-    },
-    "signin_clerk_mock": {
-      "description": "Sleek tactical auth interface matching Clerk component styling with SSO options, email OTP magic link, and enterprise login.",
-      "required_elements": [
-        "Obsidian card container with subtle subtle grid pattern",
-        "GitHub, Google, and Email sign-in options",
-        "Shield security badge"
-      ]
+    "resize_handle": "w-1 hover:w-1.5 bg-transparent hover:bg-[#1A73E8]/50 active:bg-[#1A73E8] cursor-col-resize transition-all z-30 flex items-center justify-center",
+    "workspace_bar": {
+      "container": "bg-[#F8F9FA] border-b border-[#DADCE0] px-3 py-1.5 flex items-center justify-between text-xs gap-2 select-none",
+      "chip": "px-2.5 py-1 rounded-full bg-white border border-[#DADCE0] hover:border-[#1A73E8] text-[#202124] flex items-center gap-1.5 font-medium cursor-pointer transition-colors shadow-sm",
+      "chip_active": "bg-[#E8F0FE] border-[#1A73E8] text-[#1A73E8]"
     }
   },
-  "media": {
-    "image_urls": {
-      "control_panel_bg": "https://images.unsplash.com/photo-1720962158937-7ea890052166?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDN8MHwxfHNlYXJjaHwyfHxhaSUyMGJyb3dzZXIlMjB3b3Jrc3BhY2UlMjBmdXR1cmlzdGljJTIwdGVjaG5vbG9neSUyMGRhc2hib2FyZCUyMGRhcmslMjBtb2RlfGVufDB8fHx8MTc5MzczNzgzN3ww&ixlib=rb-4.1.0&q=85",
-      "tech_interface": "https://images.unsplash.com/photo-1720962158789-9389a4f399da?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDN8MHwxfHNlYXJjaHwxfHxhaSUyMGJyb3dzZXIlMjB3b3Jrc3BhY2UlMjBmdXR1cmlzdGljJTIwdGVjaG5vbG9neSUyMGRhc2hib2FyZCUyMGRhcmslMjBtb2RlfGVufDB8fHx8MTc5MzczNzgzN3ww&ixlib=rb-4.1.0&q=85",
-      "code_view": "https://images.unsplash.com/photo-1760548425425-e42e77fa38f1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwyfHxkZXZlbG9wZXIlMjB3b3Jrc3BhY2UlMjBkYXJrJTIwdGVjaCUyMGludGVyZmFjZXxlbnwwfHx8fDE3OTM3Mzc4NDV8MA&ixlib=rb-4.1.0&q=85",
-      "terminal_matrix": "https://images.unsplash.com/photo-1775994121020-86426451f8bf?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwxfHxkZXZlbG9wZXIlMjB3b3Jrc3BhY2UlMjBkYXJrJTIwdGVjaCUyMGludGVyZmFjZXxlbnwwfHx8fDE3OTM3Mzc4NDV8MA&ixlib=rb-4.1.0&q=85"
+  "canvas_and_mouse": {
+    "canvas_container": "flex-1 bg-[#F8F9FA] relative overflow-hidden flex items-center justify-center",
+    "canvas_mouse_pointer": "cursor-default select-none pointer-events-auto",
+    "canvas_overlay_instructions": "Canvas uses standard plain arrow mouse pointer (cursor: default), zero crosshairs or plus icons. High responsiveness chromium video stream."
+  },
+  "iconography_rules": {
+    "arrow_icons": "Use sharp arrow icons (e.g. ChevronRight, ChevronLeft, ArrowRight, ArrowLeft, ChevronDown) for all collapse, expand, back, forward, and step actions. NEVER use '+' for arrows or navigation.",
+    "icon_library": "lucide-react (installed)",
+    "action_icons": {
+      "collapse_left": "ChevronLeft",
+      "expand_left": "ChevronRight",
+      "collapse_right": "ChevronRight",
+      "expand_right": "ChevronLeft",
+      "back": "ArrowLeft",
+      "forward": "ArrowRight",
+      "reload": "RotateCw",
+      "lock": "Lock",
+      "close": "X",
+      "add_tab": "Plus"
     }
   },
-  "data_testid_rules": {
-    "mandatory": true,
-    "format": "kebab-case",
-    "examples": [
-      "data-testid=\"nav-skills-link\"",
-      "data-testid=\"nav-memory-link\"",
-      "data-testid=\"nav-files-link\"",
-      "data-testid=\"nav-settings-link\"",
-      "data-testid=\"watch-me-record-button\"",
-      "data-testid=\"stop-recording-button\"",
-      "data-testid=\"live-browser-viewport\"",
-      "data-testid=\"browser-url-input\"",
-      "data-testid=\"browser-tab-item\"",
-      "data-testid=\"browser-new-tab-button\"",
-      "data-testid=\"take-over-control-button\"",
-      "data-testid=\"command-bar-input\"",
-      "data-testid=\"command-voice-mic-button\"",
-      "data-testid=\"command-bar-submit\"",
-      "data-testid=\"approval-modal-approve-button\"",
-      "data-testid=\"approval-modal-reject-button\"",
-      "data-testid=\"approval-modal-always-allow-button\"",
-      "data-testid=\"memory-add-fact-button\"",
-      "data-testid=\"skills-create-new-button\"",
-      "data-testid=\"openai-api-key-input\"",
-      "data-testid=\"save-settings-button\""
-    ]
+  "dark_to_light_mapping": {
+    "bg-[#0A0B10]": "bg-[#F8F9FA]",
+    "bg-[#0F131C]": "bg-[#F1F3F4]",
+    "bg-[#121624]": "bg-white",
+    "bg-[#1A2035]": "bg-[#DEE1E6]",
+    "text-[#00F0FF]": "text-[#1A73E8]",
+    "border-[#1E2638]": "border-[#DADCE0]",
+    "border-[#00F0FF]": "border-[#1A73E8]",
+    "shadow-[0_0_15px_rgba(0,240,255,0.2)]": "shadow-sm border border-[#DADCE0]",
+    "text-gray-400": "text-[#5F6368]",
+    "text-white": "text-[#202124]"
   },
+  "component_path": "/app/frontend/src",
   "instructions_to_main_agent": [
-    "Build a production-grade React application for 'Shadow' - Autonomous AI Browser & Process Automation platform.",
-    "Implement JS/JSX files only (no TS files). Use Lucide React icons for tactical controls.",
-    "Ensure dark mode is the core primary aesthetic with crisp 1px borders (#262B3D) and high-density command center layout.",
-    "Provide interactive mock backend states for: Live Browser Screenshot Canvas Stream, Watch-Me Step Recording with red pulsing indicator, Skill Step Editor, Memory Facts CRUD, File Manager, Task Log Ticker, Voice Mic Pulsing Animation, and Safety Approval Modals.",
-    "Do NOT use transparent backgrounds for dropdowns, popovers, or floating menus; always use solid/blurred cards (#181B26 with opacity & border).",
-    "Include explicit hover states with text contrast (e.g. `hover:bg-cyan-500/20 hover:text-cyan-400 transition-colors`).",
-    "Add `data-testid` attributes to every button, link, input, tab, modal, and key metric for reliable end-to-end testing."
+    "Refactor App and all child components to implement the Light Theme Google Chrome UI.",
+    "Replace dark background classes with Chrome light equivalents (#DEE1E6 for tab strip, white for toolbar/panels, #F1F3F4 for omnibox, #1A73E8 for cyan replacement).",
+    "Implement drag-resizable and collapsible left side panel and right activity panel with custom handle styling.",
+    "Ensure the workspace bar has a toggle button in the toolbar to hide/show it for full-screen browser experience.",
+    "Ensure the Chromium canvas video/picture stream uses plain arrow mouse pointer (cursor-default) and sharp arrow indicators.",
+    "All interactive elements (buttons, inputs, tabs, collapse triggers, chips) MUST include data-testid attributes for testing."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "All interactive and key informational elements MUST include a data-testid attribute in kebab-case format (e.g. data-testid=\"chrome-tab-close\", data-testid=\"side-panel-toggle\").",
+    "Do NOT use transparent backgrounds for headers, overlays, or floating menus.",
+    "Use sonner for toast notifications.",
+    "Do NOT use '+' for arrow buttons or directional collapse controls. Use sharp Chevron/Arrow icons.",
+    "Ensure high contrast and clean spacing (WCAG AA compliant)."
   ]
-}
+},path:

@@ -8,25 +8,25 @@ export default function ApprovalDialog({ run, onDecide }) {
   const p = run?.pending || {};
   return (
     <AlertDialog open={open}>
-      <AlertDialogContent className="bg-[#12141C] border-2 border-[#FF3B30] shadow-[0_0_60px_rgba(255,59,48,0.25)] max-w-lg" data-testid="approval-modal">
+      <AlertDialogContent className="bg-white border-2 border-[#D93025] shadow-[0_0_60px_rgba(255,59,48,0.25)] max-w-lg" data-testid="approval-modal">
         <AlertDialogHeader>
-          <div className="flex items-center gap-2 text-[#FF3B30]">
+          <div className="flex items-center gap-2 text-[#D93025]">
             <AlertTriangle className="h-5 w-5" />
             <span className="text-xs font-mono uppercase tracking-widest">Approval needed · {p.risk}</span>
           </div>
           <AlertDialogTitle className="font-display text-xl">Shadow wants to {LABEL[p.risk] || "do something risky"}</AlertDialogTitle>
-          <AlertDialogDescription className="text-slate-300" data-testid="approval-reason">{p.reason}</AlertDialogDescription>
+          <AlertDialogDescription className="text-[#3C4043]" data-testid="approval-reason">{p.reason}</AlertDialogDescription>
         </AlertDialogHeader>
-        <div className="rounded-lg bg-black/40 border border-[#262B3D] p-3 space-y-1">
-          <p className="text-xs font-mono text-slate-400 break-all" data-testid="approval-url">{p.url}</p>
-          <p className="text-xs font-mono text-slate-200 break-all" data-testid="approval-action">{p.tool}({JSON.stringify(p.args)})</p>
+        <div className="rounded-lg bg-[#F1F3F4] border border-[#DADCE0] p-3 space-y-1">
+          <p className="text-xs font-mono text-[#5F6368] break-all" data-testid="approval-url">{p.url}</p>
+          <p className="text-xs font-mono text-[#202124] break-all" data-testid="approval-action">{p.tool}({JSON.stringify(p.args)})</p>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <button onClick={() => onDecide("approve")} data-testid="approval-approve-button" className="py-2.5 rounded-lg bg-[#00E676] text-black font-semibold text-sm hover:brightness-110">Approve once</button>
-          <button onClick={() => onDecide("reject")} data-testid="approval-reject-button" className="py-2.5 rounded-lg bg-[#FF3B30] text-white font-semibold text-sm hover:brightness-110">Reject</button>
-          <button onClick={() => onDecide("always")} data-testid="approval-always-button" className="py-2 rounded-lg border border-[#262B3D] text-xs text-slate-300 hover:bg-white/5">Always allow "{p.risk}" without asking</button>
+          <button onClick={() => onDecide("approve")} data-testid="approval-approve-button" className="py-2.5 rounded-lg bg-[#1E8E3E] text-white font-semibold text-sm hover:brightness-110">Approve once</button>
+          <button onClick={() => onDecide("reject")} data-testid="approval-reject-button" className="py-2.5 rounded-lg bg-[#D93025] text-white font-semibold text-sm hover:brightness-110">Reject</button>
+          <button onClick={() => onDecide("always")} data-testid="approval-always-button" className="py-2 rounded-lg border border-[#DADCE0] text-xs text-[#3C4043] hover:bg-[#F1F3F4]">Always allow "{p.risk}" without asking</button>
           {run?.skill_id ? (
-            <button onClick={() => onDecide("always_skill")} data-testid="approval-always-skill-button" className="py-2 rounded-lg border border-[#262B3D] text-xs text-slate-300 hover:bg-white/5">Always for this skill only</button>
+            <button onClick={() => onDecide("always_skill")} data-testid="approval-always-skill-button" className="py-2 rounded-lg border border-[#DADCE0] text-xs text-[#3C4043] hover:bg-[#F1F3F4]">Always for this skill only</button>
           ) : <span />}
         </div>
       </AlertDialogContent>

@@ -977,6 +977,55 @@ async def helper_pair(body: PairIn):
     return {"token": token, "device_id": dev["id"], "name": dev["name"]}
 
 
+@app.websocket("/api/browser/stream")
+async def browser_stream(ws: WebSocket, token: str = "", group: str = "1"):
+    from clerk_auth import verify_session_token
+    try:
+        uid = verify_session_token(token)["sub"]
+    except Exception:
+        await ws.close(code=4401)
+        return
+    if not re.match(r"^[a-z0-9]{1,12}$", group):
+        await ws.close(code=4400)
+        return
+    await ws.accept()
+    if await target_of(uid) == "laptop":
+        await ws.send_json({"type": "fallback"})
+        await ws.close()
+        return
+    try:
+        s = (await sb.get_session(uid, db)).group(group)
+    except Exception as e:
+        await ws.send_json({"type": "error", "detail": str(e)[:200]})
+        await ws.close()
+        return
+    alive = {"on": True}
+    pump = asyncio.create_task(s.stream(ws.send_bytes, lambda: alive["on"] and not s.closed))
+    pump.add_done_callback(lambda t: t.cancelled() or not t.exception() or log.warning("stream ended: %r", t.exception()))
+    try:
+        while True:
+            msg = await ws.receive_json()
+            if msg.get("type") == "resize":
+                with suppress(Exception):
+                    await s.set_viewport(msg["width"], msg["height"])
+                continue
+            if msg.get("type") != "input":
+                continue
+            try:
+                if msg.get("kind") != "move":
+                    await take_over(uid, s, group)
+                await s.input(kind=msg.get("kind"), x=msg.get("x"), y=msg.get("y"), text=msg.get("text"),
+                              key=msg.get("key"), dy=msg.get("dy"))
+            except Exception as e:
+                if msg.get("kind") != "move":
+                    await ws.send_json({"type": "error", "detail": str(e)[:200]})
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    finally:
+        alive["on"] = False
+        pump.cancel()
+
+
 @app.websocket("/api/helper/ws")
 async def helper_ws(ws: WebSocket):
     auth = ws.headers.get("authorization", "")

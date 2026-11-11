@@ -26,18 +26,18 @@ export default function SkillReviewDialog({ events, onClose, onSaved }) {
 
   return (
     <Dialog open={!!events} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="bg-[#12141C] border-[#262B3D] max-w-2xl max-h-[90vh] overflow-y-auto thin-scroll" data-testid="skill-review-dialog">
+      <DialogContent className="bg-white border-[#DADCE0] max-w-2xl max-h-[90vh] overflow-y-auto thin-scroll" data-testid="skill-review-dialog">
         <DialogHeader>
           <DialogTitle className="font-display text-xl">{skill ? "Review the new skill" : "Here's what Shadow saw"}</DialogTitle>
           <DialogDescription>{skill ? "Rename it, adjust steps, then save." : `${events?.length || 0} actions captured. Add a hint, then let Shadow turn it into a skill.`}</DialogDescription>
         </DialogHeader>
         {!skill ? (
           <div className="space-y-4">
-            <ol className="max-h-64 overflow-y-auto thin-scroll space-y-1 text-xs font-mono text-slate-300 bg-black/30 rounded-lg p-3" data-testid="recorded-events-list">
-              {(events || []).map((e, i) => <li key={i}><span className="text-slate-500 mr-2">{i + 1}.</span>{e.desc}</li>)}
-              {events?.length === 0 && <li className="text-slate-500">Nothing was captured.</li>}
+            <ol className="max-h-64 overflow-y-auto thin-scroll space-y-1 text-xs font-mono text-[#3C4043] bg-black/30 rounded-lg p-3" data-testid="recorded-events-list">
+              {(events || []).map((e, i) => <li key={i}><span className="text-[#80868B] mr-2">{i + 1}.</span>{e.desc}</li>)}
+              {events?.length === 0 && <li className="text-[#80868B]">Nothing was captured.</li>}
             </ol>
-            <Input value={hint} onChange={(e) => setHint(e.target.value)} placeholder='What is this task? e.g. "Download this month&apos;s bank statement"' className="bg-[#0F111A]" data-testid="skill-hint-input" />
+            <Input value={hint} onChange={(e) => setHint(e.target.value)} placeholder='What is this task? e.g. "Download this month&apos;s bank statement"' className="bg-[#F1F3F4]" data-testid="skill-hint-input" />
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={onClose} data-testid="skill-review-discard">Discard</Button>
               <Button onClick={learn} disabled={loading || !events?.length} data-testid="skill-learn-button">

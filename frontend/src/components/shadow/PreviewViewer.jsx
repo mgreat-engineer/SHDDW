@@ -13,8 +13,8 @@ function BigShot({ runId, idx }) {
     return () => u && URL.revokeObjectURL(u);
   }, [api, runId, idx]);
   return (
-    <div className="aspect-[16/10] w-full rounded-lg border border-[#262B3D] bg-black/50 flex items-center justify-center overflow-hidden">
-      {src ? <img src={src} alt={`Step ${idx}`} className="w-full h-full object-contain" data-testid="preview-viewer-image" /> : <p className="text-xs font-mono text-slate-500 animate-pulse">Loading screenshot…</p>}
+    <div className="aspect-[16/10] w-full rounded-lg border border-[#DADCE0] bg-black/30 flex items-center justify-center overflow-hidden">
+      {src ? <img src={src} alt={`Step ${idx}`} className="w-full h-full object-contain" data-testid="preview-viewer-image" /> : <p className="text-xs font-mono text-[#80868B] animate-pulse">Loading screenshot…</p>}
     </div>
   );
 }
@@ -27,18 +27,18 @@ export default function PreviewViewer({ run, open, onOpenChange }) {
   const s = steps[Math.min(i, steps.length - 1)];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#12141C] border-[#262B3D] max-w-4xl" data-testid="preview-viewer">
-        <DialogHeader><DialogTitle className="font-display flex items-center gap-2"><Eye className="h-4 w-4 text-[#FFB000]" />Step-by-step: {run.skill_name || run.goal}</DialogTitle></DialogHeader>
+      <DialogContent className="bg-white border-[#DADCE0] max-w-4xl" data-testid="preview-viewer">
+        <DialogHeader><DialogTitle className="font-display flex items-center gap-2"><Eye className="h-4 w-4 text-[#B06000]" />Step-by-step: {run.skill_name || run.goal}</DialogTitle></DialogHeader>
         <BigShot runId={run.id} idx={s.idx} />
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-mono text-slate-500">Step {i + 1} of {steps.length} · {s.action}</p>
-            <p className={`text-sm mt-1 ${s.simulated ? "text-[#FFB000]" : "text-slate-100"}`} data-testid="preview-viewer-result">{s.simulated ? s.result.replace("PREVIEW — not done. ", "") : s.result.slice(0, 200)}</p>
-            <p className="text-xs text-slate-400 mt-1">{s.reason}</p>
+            <p className="text-xs font-mono text-[#80868B]">Step {i + 1} of {steps.length} · {s.action}</p>
+            <p className={`text-sm mt-1 ${s.simulated ? "text-[#B06000]" : "text-[#202124]"}`} data-testid="preview-viewer-result">{s.simulated ? s.result.replace("PREVIEW — not done. ", "") : s.result.slice(0, 200)}</p>
+            <p className="text-xs text-[#5F6368] mt-1">{s.reason}</p>
           </div>
           <div className="flex gap-2 shrink-0">
-            <button disabled={i === 0} onClick={() => setI(i - 1)} data-testid="preview-viewer-prev" className="h-9 w-9 rounded-lg border border-[#262B3D] flex items-center justify-center disabled:opacity-30 hover:bg-white/5"><ChevronLeft className="h-4 w-4" /></button>
-            <button disabled={i >= steps.length - 1} onClick={() => setI(i + 1)} data-testid="preview-viewer-next" className="h-9 w-9 rounded-lg border border-[#262B3D] flex items-center justify-center disabled:opacity-30 hover:bg-white/5"><ChevronRight className="h-4 w-4" /></button>
+            <button disabled={i === 0} onClick={() => setI(i - 1)} data-testid="preview-viewer-prev" className="h-9 w-9 rounded-lg border border-[#DADCE0] flex items-center justify-center disabled:opacity-30 hover:bg-[#F1F3F4]"><ChevronLeft className="h-4 w-4" /></button>
+            <button disabled={i >= steps.length - 1} onClick={() => setI(i + 1)} data-testid="preview-viewer-next" className="h-9 w-9 rounded-lg border border-[#DADCE0] flex items-center justify-center disabled:opacity-30 hover:bg-[#F1F3F4]"><ChevronRight className="h-4 w-4" /></button>
           </div>
         </div>
       </DialogContent>

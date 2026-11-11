@@ -1,3 +1,4 @@
+import { ChevronLeft } from "lucide-react";
 import { PANELS } from "./SideRail";
 import SkillsPanel from "./SkillsPanel";
 import MemoryPanel from "./MemoryPanel";
@@ -9,13 +10,16 @@ import SchedulesPanel from "./SchedulesPanel";
 import TemplatesPanel from "./TemplatesPanel";
 import ReportsPanel from "./ReportsPanel";
 
-export default function SidePanel({ panel, refresh, onRunSkill, onPreviewSkill, onSelectRun, selectedRunId, target, onTarget, currentWorkspace, onTemplateOpened }) {
+export default function SidePanel({ panel, refresh, onRunSkill, onPreviewSkill, onSelectRun, selectedRunId, target, onTarget, currentWorkspace, onTemplateOpened, onCollapse }) {
   const label = PANELS.find((p) => p.id === panel)?.label;
   return (
-    <aside className="w-[300px] shrink-0 border-r border-[#262B3D] bg-[#0F111A] flex flex-col relative z-10" data-testid="side-panel">
-      <div className="px-5 pt-5 pb-3">
-        <p className="text-[10px] font-mono uppercase tracking-widest text-slate-500">Shadow</p>
-        <h2 className="font-display text-lg font-semibold tracking-tight" data-testid="side-panel-title">{label}</h2>
+    <aside className="w-full h-full bg-white flex flex-col relative z-10" data-testid="side-panel">
+      <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wider text-[#5F6368]">Shadow</p>
+          <h2 className="font-display text-lg font-semibold tracking-tight" data-testid="side-panel-title">{label}</h2>
+        </div>
+        <button onClick={onCollapse} title="Hide side panel" data-testid="side-panel-collapse-button" className="h-7 w-7 -mr-2 rounded-full flex items-center justify-center text-[#5F6368] hover:bg-[#F1F3F4]"><ChevronLeft className="h-4 w-4" /></button>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto thin-scroll px-4 pb-4">
         {panel === "skills" && <SkillsPanel refresh={refresh} onRun={onRunSkill} onPreview={onPreviewSkill} />}

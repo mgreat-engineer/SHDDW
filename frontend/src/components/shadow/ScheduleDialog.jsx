@@ -26,43 +26,43 @@ export default function ScheduleDialog({ open, onOpenChange, skills, initial, on
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#12141C] border-[#262B3D] max-w-lg" data-testid="schedule-dialog">
+      <DialogContent className="bg-white border-[#DADCE0] max-w-lg" data-testid="schedule-dialog">
         <DialogHeader>
           <DialogTitle className="font-display">{f.id ? "Edit schedule" : "Schedule a skill"}</DialogTitle>
           <DialogDescription>Times are in your time zone ({f.timezone || tz()}), on quarter hours.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-slate-500">Skill</label>
+            <label className="text-[10px] font-mono uppercase tracking-widest text-[#80868B]">Skill</label>
             <Select value={f.skill_id} onValueChange={(v) => set("skill_id", v)}>
-              <SelectTrigger className="mt-1 bg-[#0F111A]" data-testid="schedule-skill-select"><SelectValue placeholder="Pick a skill" /></SelectTrigger>
+              <SelectTrigger className="mt-1 bg-[#F1F3F4]" data-testid="schedule-skill-select"><SelectValue placeholder="Pick a skill" /></SelectTrigger>
               <SelectContent>{skills.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div>
             <div className="flex items-center justify-between">
-              <label className="text-[10px] font-mono uppercase tracking-widest text-slate-500">Days</label>
-              <div className="flex gap-2">{Object.entries(PRESETS).map(([k, v]) => <button key={k} onClick={() => set("days", v)} className="text-[11px] text-[#00F0FF] hover:underline" data-testid={`schedule-preset-${k.replace(" ", "-").toLowerCase()}`}>{k}</button>)}</div>
+              <label className="text-[10px] font-mono uppercase tracking-widest text-[#80868B]">Days</label>
+              <div className="flex gap-2">{Object.entries(PRESETS).map(([k, v]) => <button key={k} onClick={() => set("days", v)} className="text-[11px] text-[#1A73E8] hover:underline" data-testid={`schedule-preset-${k.replace(" ", "-").toLowerCase()}`}>{k}</button>)}</div>
             </div>
             <div className="mt-1 grid grid-cols-7 gap-1.5">
               {DAYS.map(([n, d]) => (
                 <button key={d} onClick={() => toggleDay(d)} data-testid={`schedule-day-${d}`}
-                  className={`py-2 rounded-lg text-xs font-semibold border transition-colors ${f.days.includes(d) ? "bg-[#00F0FF]/15 border-[#00F0FF]/50 text-[#00F0FF]" : "border-[#262B3D] text-slate-400 hover:bg-white/5"}`}>{n}</button>
+                  className={`py-2 rounded-lg text-xs font-semibold border transition-colors ${f.days.includes(d) ? "bg-[#1A73E8]/15 border-[#1A73E8]/50 text-[#1A73E8]" : "border-[#DADCE0] text-[#5F6368] hover:bg-[#F1F3F4]"}`}>{n}</button>
               ))}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] font-mono uppercase tracking-widest text-slate-500">Time</label>
+              <label className="text-[10px] font-mono uppercase tracking-widest text-[#80868B]">Time</label>
               <Select value={f.time} onValueChange={(v) => set("time", v)}>
-                <SelectTrigger className="mt-1 bg-[#0F111A]" data-testid="schedule-time-select"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="mt-1 bg-[#F1F3F4]" data-testid="schedule-time-select"><SelectValue /></SelectTrigger>
                 <SelectContent className="max-h-64">{TIMES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
-              <label className="text-[10px] font-mono uppercase tracking-widest text-slate-500">Run on</label>
+              <label className="text-[10px] font-mono uppercase tracking-widest text-[#80868B]">Run on</label>
               <Select value={f.target} onValueChange={(v) => set("target", v)}>
-                <SelectTrigger className="mt-1 bg-[#0F111A]" data-testid="schedule-target-select"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="mt-1 bg-[#F1F3F4]" data-testid="schedule-target-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="laptop">My laptop (cloud if it's off)</SelectItem>
                   <SelectItem value="cloud">Cloud</SelectItem>
@@ -71,11 +71,11 @@ export default function ScheduleDialog({ open, onOpenChange, skills, initial, on
             </div>
           </div>
           <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-slate-500">Extra instructions (optional)</label>
+            <label className="text-[10px] font-mono uppercase tracking-widest text-[#80868B]">Extra instructions (optional)</label>
             <input value={f.instructions || ""} onChange={(e) => set("instructions", e.target.value)} placeholder="e.g. use yesterday's date" data-testid="schedule-instructions-input"
-              className="mt-1 w-full bg-[#0F111A] border border-[#262B3D] rounded-md px-3 py-2 text-sm outline-none focus:border-[#00F0FF]/50" />
+              className="mt-1 w-full bg-[#F1F3F4] border border-[#DADCE0] rounded-md px-3 py-2 text-sm outline-none focus:border-[#1A73E8]/50" />
           </div>
-          <p className="text-[11px] text-slate-500">Risky steps (pay, send, delete) still wait for your OK unless you gave standing permission.</p>
+          <p className="text-[11px] text-[#80868B]">Risky steps (pay, send, delete) still wait for your OK unless you gave standing permission.</p>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button onClick={save} disabled={!f.skill_id || !f.days.length} data-testid="schedule-save-button">Save schedule</Button>

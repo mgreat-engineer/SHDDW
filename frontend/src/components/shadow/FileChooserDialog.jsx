@@ -27,24 +27,24 @@ export default function FileChooserDialog({ open, onDone, laptop }) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && submit(true)}>
-      <DialogContent className="bg-[#12141C] border-[#262B3D]" data-testid="file-chooser-dialog">
+      <DialogContent className="bg-white border-[#DADCE0]" data-testid="file-chooser-dialog">
         <DialogHeader>
           <DialogTitle className="font-display">The website wants a file</DialogTitle>
           <DialogDescription>{laptop ? "Pick files from the folders you allowed on your laptop." : "Pick files from Shadow's Files area, or add one from your computer."}</DialogDescription>
         </DialogHeader>
         <div className="max-h-64 overflow-y-auto thin-scroll space-y-1">
-          {files === null && <p className="text-sm text-slate-500 animate-pulse">Loading files…</p>}
-          {files?.length === 0 && <p className="text-sm text-slate-500">{laptop ? "No files in your allowed folders." : "No files yet."}</p>}
+          {files === null && <p className="text-sm text-[#80868B] animate-pulse">Loading files…</p>}
+          {files?.length === 0 && <p className="text-sm text-[#80868B]">{laptop ? "No files in your allowed folders." : "No files yet."}</p>}
           {(files || []).map((f) => (
-            <label key={f.name} className="flex items-center gap-3 px-2 py-2 rounded hover:bg-white/5 cursor-pointer" data-testid={`file-chooser-item-${f.name}`}>
+            <label key={f.name} className="flex items-center gap-3 px-2 py-2 rounded hover:bg-[#F1F3F4] cursor-pointer" data-testid={`file-chooser-item-${f.name}`}>
               <Checkbox checked={picked.includes(f.name)} onCheckedChange={() => toggle(f.name)} />
               <span className="text-sm flex-1 truncate">{f.name}</span>
-              <span className="text-xs font-mono text-slate-500">{fmtSize(f.size)}</span>
+              <span className="text-xs font-mono text-[#80868B]">{fmtSize(f.size)}</span>
             </label>
           ))}
         </div>
         {!laptop && (
-          <label className="text-sm text-[#00F0FF] cursor-pointer hover:underline">
+          <label className="text-sm text-[#1A73E8] cursor-pointer hover:underline">
             + Add from my computer<input type="file" multiple className="hidden" onChange={fromComputer} data-testid="file-chooser-computer-input" />
           </label>
         )}

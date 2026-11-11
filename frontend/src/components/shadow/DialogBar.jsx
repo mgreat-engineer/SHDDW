@@ -12,16 +12,16 @@ export default function DialogBar({ dialog, onDone }) {
     catch (e) { toast.error(errMsg(e)); }
   };
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 bg-[#FFB000]/10 border-b border-[#FFB000]/40 fade-up" data-testid="page-dialog-bar">
-      <MessageSquareWarning className="h-4 w-4 text-[#FFB000] shrink-0" />
-      <p className="text-sm flex-1 truncate"><span className="font-mono text-xs uppercase text-[#FFB000] mr-2">{dialog.type}</span>{dialog.message}</p>
+    <div className="flex items-center gap-3 px-4 py-2.5 bg-[#B06000]/10 border-b border-[#B06000]/40 fade-up" data-testid="page-dialog-bar">
+      <MessageSquareWarning className="h-4 w-4 text-[#B06000] shrink-0" />
+      <p className="text-sm flex-1 truncate"><span className="font-mono text-xs uppercase text-[#B06000] mr-2">{dialog.type}</span>{dialog.message}</p>
       {dialog.type === "prompt" && (
         <input data-testid="page-dialog-input" value={text} onChange={(e) => setText(e.target.value)} placeholder={dialog.default || "Answer"}
-          className="bg-[#0F111A] border border-[#262B3D] rounded px-2 py-1 text-sm outline-none" />
+          className="bg-[#F1F3F4] border border-[#DADCE0] rounded px-2 py-1 text-sm outline-none" />
       )}
-      <button data-testid="page-dialog-accept" onClick={() => answer(true)} className="text-xs px-3 py-1.5 rounded bg-[#FFB000] text-black font-semibold">OK</button>
+      <button data-testid="page-dialog-accept" onClick={() => answer(true)} className="text-xs px-3 py-1.5 rounded bg-[#F9AB00] text-[#202124] font-semibold">OK</button>
       {dialog.type !== "alert" && (
-        <button data-testid="page-dialog-dismiss" onClick={() => answer(false)} className="text-xs px-3 py-1.5 rounded border border-[#262B3D] hover:bg-white/5">Cancel</button>
+        <button data-testid="page-dialog-dismiss" onClick={() => answer(false)} className="text-xs px-3 py-1.5 rounded border border-[#DADCE0] hover:bg-[#F1F3F4]">Cancel</button>
       )}
     </div>
   );

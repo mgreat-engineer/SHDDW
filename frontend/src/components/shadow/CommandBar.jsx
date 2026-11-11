@@ -42,41 +42,41 @@ export default function CommandBar({ recording, recorded, recordedCount, waiting
   const addNote = async (e) => { e.preventDefault(); if (!note.trim()) return; try { await api.post("/record/note", { text: note }); setNote(""); toast.success("Note added to this step"); } catch (err) { toast.error(errMsg(err)); } };
 
   if (recording) return (
-    <div className="rounded-2xl border border-[#FF3B30]/50 bg-[#181B26]/90 backdrop-blur-xl p-3 flex flex-col gap-2 fade-up" data-testid="recording-bar">
+    <div className="rounded-2xl border border-[#D93025]/50 bg-white/90 backdrop-blur-xl p-3 flex flex-col gap-2 fade-up" data-testid="recording-bar">
       <div className="flex items-center gap-3">
-        <span className="h-2.5 w-2.5 rounded-full bg-[#FF3B30] rec-pulse" />
-        <span className="text-xs font-mono uppercase tracking-widest text-[#FF3B30]" data-testid="recording-indicator">Watching you · {recordedCount} steps</span>
-        <p className="flex-1 text-xs text-slate-400 truncate font-mono" data-testid="recording-last-step">{recorded[recorded.length - 1] || "Do your task in the browser above"}</p>
-        <button onClick={stopRec} data-testid="stop-recording-button" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#FF3B30] text-white text-sm font-semibold hover:bg-[#ff5247] transition-colors"><Square className="h-3.5 w-3.5 fill-white" />Stop & learn</button>
+        <span className="h-2.5 w-2.5 rounded-full bg-[#D93025] rec-pulse" />
+        <span className="text-xs font-mono uppercase tracking-widest text-[#D93025]" data-testid="recording-indicator">Watching you · {recordedCount} steps</span>
+        <p className="flex-1 text-xs text-[#5F6368] truncate font-mono" data-testid="recording-last-step">{recorded[recorded.length - 1] || "Do your task in the browser above"}</p>
+        <button onClick={stopRec} data-testid="stop-recording-button" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#D93025] text-white text-sm font-semibold hover:bg-[#B3261E] transition-colors"><Square className="h-3.5 w-3.5 fill-white" />Stop & learn</button>
       </div>
       <form onSubmit={addNote} className="flex items-center gap-2">
-        <StickyNote className="h-4 w-4 text-slate-500" />
+        <StickyNote className="h-4 w-4 text-[#80868B]" />
         <input value={note} onChange={(e) => setNote(e.target.value)} data-testid="recording-note-input" placeholder='Add a note for this step, e.g. "always pick the latest invoice"'
-          className="flex-1 bg-transparent outline-none text-sm placeholder:text-slate-600" />
-        <button data-testid="recording-note-submit" className="text-xs text-slate-300 px-3 py-1 rounded border border-[#262B3D] hover:bg-white/5">Add note</button>
+          className="flex-1 bg-transparent outline-none text-sm placeholder:text-[#9AA0A6]" />
+        <button data-testid="recording-note-submit" className="text-xs text-[#3C4043] px-3 py-1 rounded border border-[#DADCE0] hover:bg-[#F1F3F4]">Add note</button>
       </form>
     </div>
   );
 
   return (
-    <div className="rounded-2xl border border-[#00F0FF]/25 bg-[#181B26]/90 backdrop-blur-xl shadow-[0_10px_30px_rgba(0,0,0,0.6)] p-2.5" data-testid="command-bar">
+    <div className="rounded-2xl border border-[#1A73E8]/25 bg-white/90 backdrop-blur-xl shadow-[0_10px_30px_rgba(0,0,0,0.6)] p-2.5" data-testid="command-bar">
       {!waiting && !text && (
         <div className="flex gap-2 px-1 pb-2 overflow-x-auto thin-scroll">
-          {CHIPS.map((c) => <button key={c} onClick={() => setText(c + " ")} className="shrink-0 text-[11px] px-2.5 py-1 rounded-full border border-[#262B3D] text-slate-400 hover:text-slate-100 hover:border-[#00F0FF]/40 transition-colors" data-testid="command-chip">{c}…</button>)}
+          {CHIPS.map((c) => <button key={c} onClick={() => setText(c + " ")} className="shrink-0 text-[11px] px-2.5 py-1 rounded-full border border-[#DADCE0] text-[#5F6368] hover:text-[#202124] hover:border-[#1A73E8]/40 transition-colors" data-testid="command-chip">{c}…</button>)}
         </div>
       )}
       <div className="flex items-center gap-2">
         <button onClick={startRec} disabled={busy} data-testid="watch-me-record-button" title="Watch me"
-          className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-[#FF3B30]/40 text-[#FF3B30] text-sm font-semibold hover:bg-[#FF3B30]/10 disabled:opacity-40 transition-colors"><Circle className="h-3 w-3 fill-[#FF3B30]" />Watch me</button>
+          className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-[#D93025]/40 text-[#D93025] text-sm font-semibold hover:bg-[#D93025]/10 disabled:opacity-40 transition-colors"><Circle className="h-3 w-3 fill-[#D93025]" />Watch me</button>
         <button onPointerDown={voice.start} onPointerUp={voice.stop} onPointerLeave={() => voice.listening && voice.stop()} data-testid="voice-mic-button" title="Hold to talk"
-          className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center transition-colors ${voice.listening ? "bg-[#00F0FF] text-black rec-pulse" : "bg-white/5 text-slate-300 hover:bg-white/10"}`}>
+          className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center transition-colors ${voice.listening ? "bg-[#1A73E8] text-white rec-pulse" : "bg-[#F1F3F4] text-[#3C4043] hover:bg-[#E8EAED]"}`}>
           {voice.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
         </button>
         <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} data-testid="command-input"
           placeholder={waiting ? "Reply to Shadow's question…" : voice.listening ? "Listening… release to send" : `Tell Shadow what to do in ${groupName || "this workspace"}, or name a skill…`}
-          className="flex-1 bg-transparent outline-none text-sm px-2 placeholder:text-slate-500" />
+          className="flex-1 bg-transparent outline-none text-sm px-2 placeholder:text-[#80868B]" />
         <button onClick={() => submit()} disabled={!text.trim()} data-testid="command-submit-button"
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#00F0FF] text-black text-sm font-semibold hover:shadow-[0_0_20px_rgba(0,240,255,0.45)] disabled:opacity-40 transition-shadow"><Send className="h-4 w-4" />{waiting ? "Reply" : "Run"}</button>
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1A73E8] text-white text-sm font-semibold hover:shadow-[0_0_20px_rgba(26,115,232,0.45)] disabled:opacity-40 transition-shadow"><Send className="h-4 w-4" />{waiting ? "Reply" : "Run"}</button>
       </div>
     </div>
   );

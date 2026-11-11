@@ -30,20 +30,20 @@ function Tile({ g, onOpen }) {
   const src = useTileFrame(api, g.id);
   return (
     <div onClick={() => onOpen(g.id)} data-testid={`group-tile-${g.id}`}
-      className="group/tile cursor-pointer rounded-xl border border-[#262B3D] bg-[#0F111A] overflow-hidden flex flex-col hover:border-[#00F0FF]/50 transition-colors fade-up">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#262B3D] bg-[#181B26]">
+      className="group/tile cursor-pointer rounded-xl border border-[#DADCE0] bg-[#F1F3F4] overflow-hidden flex flex-col hover:border-[#1A73E8]/50 transition-colors fade-up">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#DADCE0] bg-white">
         <span className="flex-1 min-w-0 flex flex-col leading-tight">
           <span className="text-xs font-semibold truncate" data-testid={`group-tile-name-${g.id}`}>{g.name}</span>
-          {g.label && <span className="text-[11px] text-[#00F0FF]/90 truncate" data-testid={`group-tile-label-${g.id}`}>{g.label}</span>}
+          {g.label && <span className="text-[11px] text-[#1A73E8]/90 truncate" data-testid={`group-tile-label-${g.id}`}>{g.label}</span>}
         </span>
-        {g.run ? <StatusBadge status={g.run.status} /> : <span className="text-[10px] font-mono uppercase text-slate-500">{g.recording ? "recording" : "idle"}</span>}
+        {g.run ? <StatusBadge status={g.run.status} /> : <span className="text-[10px] font-mono uppercase text-[#80868B]">{g.recording ? "recording" : "idle"}</span>}
         <button title="Open in its own window" data-testid={`group-tile-popout-${g.id}`} onClick={(e) => { e.stopPropagation(); popOut(g.id); }}
-          className="p-1 rounded text-slate-400 hover:bg-white/10"><ExternalLink className="h-3.5 w-3.5" /></button>
+          className="p-1 rounded text-[#5F6368] hover:bg-[#E8EAED]"><ExternalLink className="h-3.5 w-3.5" /></button>
       </div>
-      <div className="aspect-[16/10] bg-black/60 flex items-center justify-center">
-        {src ? <img src={src} alt={g.name} className="w-full h-full object-contain" draggable={false} /> : <span className="text-xs font-mono text-slate-600 animate-pulse">Loading…</span>}
+      <div className="aspect-[16/10] bg-[#F8F9FA] flex items-center justify-center">
+        {src ? <img src={src} alt={g.name} className="w-full h-full object-contain" draggable={false} /> : <span className="text-xs font-mono text-[#9AA0A6] animate-pulse">Loading…</span>}
       </div>
-      <p className="px-3 py-2 text-[11px] text-slate-400 truncate" title={g.run?.goal || g.url} data-testid={`group-tile-goal-${g.id}`}>{g.run?.goal || g.url || "Empty"}</p>
+      <p className="px-3 py-2 text-[11px] text-[#5F6368] truncate" title={g.run?.goal || g.url} data-testid={`group-tile-goal-${g.id}`}>{g.run?.goal || g.url || "Empty"}</p>
     </div>
   );
 }

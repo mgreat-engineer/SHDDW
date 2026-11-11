@@ -1,19 +1,17 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ClerkProvider } from "@clerk/react";
-import { dark } from "@clerk/ui/themes";
 
 const appearance = {
-  theme: dark,
-  captcha: { theme: "dark" },
+  captcha: { theme: "light" },
   variables: {
-    colorPrimary: "#00F0FF",
-    colorPrimaryForeground: "#08090E",
-    colorBackground: "#12141C",
-    colorInput: "#181B26",
-    colorBorder: "#262B3D",
+    colorPrimary: "#1A73E8",
+    colorPrimaryForeground: "#FFFFFF",
+    colorBackground: "#FFFFFF",
+    colorInput: "#FFFFFF",
+    colorBorder: "#DADCE0",
     fontFamily: "Plus Jakarta Sans, sans-serif",
-    borderRadius: "0.6rem",
+    borderRadius: "0.5rem",
   },
 };
 
