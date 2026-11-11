@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 16: landing/download page + public downloads endpoint + desktop helper app-window. Backend: 11/11 new pytest pass (live /api/public/downloads unavailable shape w/o auth; mocked GitHub release parsing -> available/1.0.7/3 links; partial assets; fetch failure -> unavailable; 10-min cache incl. expiry refetch; blank HELPER_REPO). Desktop core: import OK (VERSION 1.0.5), launch_options headless toggle, open_app_window Chrome --app=<server_url|https://shddw.com>/?app=1 with own --user-data-dir, webbrowser.open fallback. iter15 regression 10/10 pass. UI: signed-out / shows landing (all testids, 3 steps, Win+Mac install steps, open-app -> /sign-in, unavailable button 'Download coming soon' + web link, no version); nav Download anchors to #download; /download renders landing signed-in and out; /?app=1 signed-out -> /sign-in; signed-in / -> workspace; signed-in /?app=1 -> workspace. Stubbed endpoint: Windows UA -> 'Download Shadow for Windows' + mac_arm/mac_intel others; Mac UA w/o userAgentData -> 'Mac (Apple silicon)' + windows/mac_intel others; version line shown. Mobile 390px no horizontal overflow. No page errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/public/downloads", "issue": "Failed GitHub lookups are cached for the full 10 minutes (failure dict is truthy), so a transient GitHub error/rate-limit hides downloads for 10 min. Consider a shorter TTL (e.g. 60s) for failures."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Landing DownloadButton (unknown OS e.g. Linux/ChromeOS/Android)", "issue": "When OS isn't detected, primary button falls back to first link ('Download Shadow for Windows') AND the same Windows link is repeated under 'Also for:' (others filter only excludes os=null). Exclude the fallback key from others or show a neutral 'Download Shadow' with all options.", "selector": "[data-testid='landing-download-windows']", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Desktop app window sign-out", "issue": "IN_APP is computed once from window.location at module load. After Clerk sign-in the app window lands on '/' without ?app=1; any later full reload + sign-out in the app window shows the marketing landing (with Download button) inside the installed app instead of /sign-in. Consider persisting app mode (sessionStorage) once ?app=1 is seen.", "affected_selectors": ["[data-testid='landing-page']"]}
+    ],
+    "design_issues": [
+      {"screen": "/download while signed in", "issues": ["Header still shows 'Sign in' and bottom CTA 'Open Shadow on the web' -> /sign-in; for signed-in users these should read 'Open Shadow' and link to '/'."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter16_downloads_landing.py", "/app/test_reports/pytest/iter16.xml"],
+  "action_items": [
+    "(Low) Use a shorter cache TTL for failed GitHub release lookups",
+    "(Low) Don't duplicate fallback link in 'Also for' when OS is unknown; consider neutral label",
+    "(Low) Persist app mode (?app=1) in sessionStorage so signed-out state inside desktop app window always goes to /sign-in",
+    "(Low) On /download for signed-in users, show 'Open Shadow' linking to '/' instead of 'Sign in'"
+  ],
+  "critical_code_review_comments": [
+    "detectOs relies on userAgentData.architecture === 'x86' to pick mac_intel; Safari/Firefox on Intel Macs have no userAgentData and will get the Apple-silicon dmg by default. The 'Also for' Intel link mitigates this; acceptable but worth noting.",
+    "main.py toggle_show calls helper.restart_browser() immediately, which would kill an in-progress task's Chrome; consider deferring restart until idle or warning the user.",
+    "open_app_window runs on every helper start (open_app_on_start True) even before pairing -> opens https://shddw.com/?app=1 (fine for production, but in preview it ignores the preview URL until paired)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter16_downloads_landing.py"],
+  "success_rate": {"backend": "100%", "frontend": "100% of requested flows (4 low-priority issues)"},
+  "test_credentials": "shadow.a+clerk_test@example.com via clerk_token.py ticket (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None. HELPER_REPO not modified (only monkeypatched in-process during unit tests).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_iter16_downloads_landing.py (pytest.ini adds xdist; don't pass -p no:xdist). UI download-available states were tested by stubbing **/api/public/downloads via page.route in a new browser context with custom UA; headless Chromium on Linux reports userAgentData architecture 'x86', so Mac UA alone yields mac_intel — override navigator.userAgentData to test Apple-silicon path."
+}

@@ -86,6 +86,13 @@ Build a standalone browser like Polar browser with a mind of its own. It learns 
 - Import Chrome passwords: POST /api/passwords/import (Chrome CSV) from the Passwords panel
 - Tested: iteration_14 + 15 (all pass)
 
+## Download-first landing at shddw.com (2026-06)
+- Signed-out "/" (and "/download") = clean landing: OS-detected Download button (Windows / Mac Apple silicon / Mac Intel), short "How it works", install steps for unsigned-app warnings, Sign in / Open Shadow links
+- GET /api/public/downloads reads the latest GitHub release of HELPER_REPO (backend/.env, empty for now → "Download coming soon"); 10-min cache (60s on failure)
+- Desktop helper: opens Shadow in its own app window (Chrome --app=<server>/?app=1, own profile), "Open Shadow" button, "Show Chrome windows while Shadow works" (headed Chrome, default on). App mode remembered in sessionStorage so sign-out inside the app goes to /sign-in
+- Pending user: Save to GitHub (public repo), let the desktop-build workflow publish a release, then set HELPER_REPO (preview + production)
+- Tested: iteration_16 + fixes self-checked
+
 ## Backlog
 - P1: Phase 2 remainder: buy signing certificates (Apple Developer ID $99/yr; Windows certificate or Azure Trusted Signing) and add them as GitHub secrets; email/push alert when a scheduled run waits for approval
 - P1: Move files to object storage for multi-instance production

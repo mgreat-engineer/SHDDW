@@ -7,7 +7,10 @@ import Workspace from "@/pages/Workspace";
 import Landing from "@/pages/Landing";
 import { Toaster } from "@/components/ui/sonner";
 
-const IN_APP = new URLSearchParams(window.location.search).get("app") === "1";
+const IN_APP = (() => {
+  if (new URLSearchParams(window.location.search).get("app") === "1") sessionStorage.setItem("shadow-app", "1");
+  return sessionStorage.getItem("shadow-app") === "1";
+})();
 
 function Home() {
   return (

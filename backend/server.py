@@ -153,7 +153,7 @@ async def public_downloads():
     repo = (os.environ.get("HELPER_REPO") or "").strip()
     if not repo:
         return {"available": False, "version": None, "links": {}}
-    if _DL_CACHE["data"] and time.time() - _DL_CACHE["t"] < 600:
+    if _DL_CACHE["data"] and time.time() - _DL_CACHE["t"] < (600 if _DL_CACHE["data"]["available"] else 60):
         return _DL_CACHE["data"]
 
     def fetch():

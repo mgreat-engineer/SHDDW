@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "@clerk/react";
 import axios from "axios";
 import { Apple, ArrowRight, Download, Eye, Layers, Monitor, ShieldCheck, Sparkles } from "lucide-react";
 import { API } from "@/lib/api";
@@ -31,11 +32,11 @@ function DownloadButton({ dl, os, testId }) {
     );
   }
   const target = href || Object.values(dl.links)[0];
-  const label = href ? OS_LABEL[os] : OS_LABEL[Object.keys(dl.links)[0]];
+  const label = href ? OS_LABEL[os] : null;
   return (
     <a href={target} data-testid={testId}
       className="inline-flex items-center gap-2 h-12 px-7 rounded-full bg-[#1A73E8] text-white font-medium shadow-[0_1px_3px_rgba(26,115,232,0.4)] hover:bg-[#1557B0] transition-colors">
-      <Download className="h-4 w-4" />Download Shadow for {label}
+      <Download className="h-4 w-4" />{label ? `Download Shadow for ${label}` : `Download Shadow for ${OS_LABEL[Object.keys(dl.links)[0]]}`}
     </a>
   );
 }
@@ -82,14 +83,16 @@ export default function Landing() {
     axios.get(`${API}/public/downloads`).then((r) => setDl(r.data)).catch(() => setDl({ available: false, links: {} }));
     detectOs().then(setOs);
   }, []);
-  const others = dl?.available ? Object.entries(dl.links).filter(([k]) => k !== os) : [];
+  const primary = dl?.available ? (os && dl.links[os] ? os : Object.keys(dl.links)[0]) : null;
+  const others = dl?.available ? Object.entries(dl.links).filter(([k]) => k !== primary) : [];
+  const { isSignedIn } = useAuth();
 
   return (
     <div className="min-h-screen bg-white text-[#202124]" data-testid="landing-page">
       <header className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <div className="flex items-center gap-2.5"><div className="h-7 w-7 rounded-full bg-[#1A73E8] flex items-center justify-center"><div className="h-2.5 w-2.5 rounded-full bg-white" /></div><span className="font-semibold tracking-tight">Shadow</span></div>
         <nav className="flex items-center gap-2">
-          <Link to="/sign-in" className="text-sm px-4 py-2 rounded-full text-[#3C4043] hover:bg-[#F1F3F4]" data-testid="landing-sign-in-link">Sign in</Link>
+          <Link to={isSignedIn ? "/" : "/sign-in"} className="text-sm px-4 py-2 rounded-full text-[#3C4043] hover:bg-[#F1F3F4]" data-testid="landing-sign-in-link">{isSignedIn ? "Open Shadow" : "Sign in"}</Link>
           <a href="#download" className="text-sm px-4 py-2 rounded-full border border-[#DADCE0] text-[#1A73E8] hover:bg-[#F1F3F4]" data-testid="landing-nav-download">Download</a>
         </nav>
       </header>
@@ -137,7 +140,7 @@ export default function Landing() {
 
         <section className="py-16 border-t border-[#DADCE0] flex flex-col sm:flex-row sm:items-center justify-between gap-6">
           <div><h2 className="text-base md:text-lg font-semibold">Already installed?</h2><p className="text-sm text-[#5F6368] mt-1">Sign in to see your workspaces, skills and reports.</p></div>
-          <Link to="/sign-in" className="inline-flex items-center gap-2 text-sm px-5 py-2.5 rounded-full border border-[#DADCE0] text-[#1A73E8] hover:bg-[#F1F3F4]" data-testid="landing-open-app">Open Shadow on the web<ArrowRight className="h-4 w-4" /></Link>
+          <Link to={isSignedIn ? "/" : "/sign-in"} className="inline-flex items-center gap-2 text-sm px-5 py-2.5 rounded-full border border-[#DADCE0] text-[#1A73E8] hover:bg-[#F1F3F4]" data-testid="landing-open-app">{isSignedIn ? "Open Shadow" : "Open Shadow on the web"}<ArrowRight className="h-4 w-4" /></Link>
         </section>
       </main>
       <footer className="border-t border-[#DADCE0] py-8 text-center text-xs text-[#80868B]">© {new Date().getFullYear()} Shadow · shddw.com</footer>
