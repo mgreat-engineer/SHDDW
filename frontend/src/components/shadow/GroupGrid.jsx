@@ -32,7 +32,10 @@ function Tile({ g, onOpen }) {
     <div onClick={() => onOpen(g.id)} data-testid={`group-tile-${g.id}`}
       className="group/tile cursor-pointer rounded-xl border border-[#262B3D] bg-[#0F111A] overflow-hidden flex flex-col hover:border-[#00F0FF]/50 transition-colors fade-up">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[#262B3D] bg-[#181B26]">
-        <span className="text-xs font-semibold truncate flex-1" data-testid={`group-tile-name-${g.id}`}>{g.name}</span>
+        <span className="flex-1 min-w-0 flex flex-col leading-tight">
+          <span className="text-xs font-semibold truncate" data-testid={`group-tile-name-${g.id}`}>{g.name}</span>
+          {g.label && <span className="text-[10px] text-[#00F0FF]/70 truncate" data-testid={`group-tile-label-${g.id}`}>{g.label}</span>}
+        </span>
         {g.run ? <StatusBadge status={g.run.status} /> : <span className="text-[10px] font-mono uppercase text-slate-500">{g.recording ? "recording" : "idle"}</span>}
         <button title="Open in its own window" data-testid={`group-tile-popout-${g.id}`} onClick={(e) => { e.stopPropagation(); popOut(g.id); }}
           className="p-1 rounded text-slate-400 hover:bg-white/10"><ExternalLink className="h-3.5 w-3.5" /></button>

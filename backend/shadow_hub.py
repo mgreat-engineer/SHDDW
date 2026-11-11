@@ -20,6 +20,7 @@ TIMEOUTS = {
     "corrections_take": 10, "take_events": 10, "clear_events": 10, "elements": 15, "page_text": 15,
     "act": 120, "current_url": 10, "files_list": 20, "file_read": 30, "file_write": 30, "highlight": 10, "unhighlight": 10,
     "groups_list": 10, "group_new": 40, "group_rename": 10, "group_close": 20,
+    "groups_restore": 180, "save_states": 60,
 }
 
 

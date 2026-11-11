@@ -201,7 +201,10 @@ class RunEngine:
         corr = "\n".join(f"- {c}" for c in run.get("corrections", [])) or "(none)"
         tables = "\n".join(f'- "{t["name"]}" columns {t["columns"]} — {len(t["rows"])} rows' for t in run.get("tables") or []) or "(none yet)"
         mode = PREVIEW_NOTE if run.get("mode") == "preview" else ""
-        return f"""{mode}GOAL: {run['goal']}
+        grp = st.get("group") or {}
+        ws = (f'WORKSPACE: "{grp.get("name", "Main")}"' + (f' for client/company "{grp["label"]}"' if grp.get("label") else "")
+              + " — this workspace has its own logins and tabs. Work only with this client's accounts, files and data.\n")
+        return f"""{mode}{ws}GOAL: {run['goal']}
 USER MESSAGES DURING THIS RUN:
 {msgs}
 

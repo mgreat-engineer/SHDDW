@@ -1,0 +1,39 @@
+import { useEffect, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+
+export default function WorkspaceDialog({ open, workspace, onClose, onSave }) {
+  const [name, setName] = useState("");
+  const [label, setLabel] = useState("");
+  const [url, setUrl] = useState("");
+  useEffect(() => { if (open) { setName(workspace?.name || ""); setLabel(workspace?.label || ""); setUrl(""); } }, [open, workspace]);
+  const editing = !!workspace;
+  const submit = (e) => { e.preventDefault(); onSave({ name: name.trim(), label: label.trim(), url: url.trim() }); };
+  const field = "w-full bg-[#0F111A] border border-[#262B3D] rounded-lg px-3 py-2 text-sm outline-none focus:border-[#00F0FF]/50 transition-colors";
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="bg-[#12141C] border-[#262B3D] text-slate-100" data-testid="workspace-dialog">
+        <DialogHeader>
+          <DialogTitle className="font-display">{editing ? "Edit workspace" : "New workspace"}</DialogTitle>
+          <DialogDescription className="text-slate-400">Each workspace has its own website logins, cookies, tabs and task. Signing in to a site here does not sign you in anywhere else.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-3">
+          <label className="block text-xs text-slate-400">Name
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. PATOG authorizations" maxLength={40} className={`${field} mt-1`} data-testid="workspace-name-input" />
+          </label>
+          <label className="block text-xs text-slate-400">Client or company
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. PATOG — Shadow keeps this workspace on this client" maxLength={80} className={`${field} mt-1`} data-testid="workspace-label-input" />
+          </label>
+          {!editing && (
+            <label className="block text-xs text-slate-400">Start page (optional)
+              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="e.g. carelon.com" className={`${field} mt-1 font-mono`} data-testid="workspace-url-input" />
+            </label>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="text-sm px-4 py-2 rounded-lg border border-[#262B3D] text-slate-300 hover:bg-white/5" data-testid="workspace-cancel-button">Cancel</button>
+            <button type="submit" className="text-sm px-4 py-2 rounded-lg bg-[#00F0FF] text-black font-semibold" data-testid="workspace-save-button">{editing ? "Save" : "Open workspace"}</button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

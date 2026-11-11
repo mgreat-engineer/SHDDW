@@ -193,11 +193,13 @@ MAX_GROUPS = 10
 
 
 class Group:
-    """One window group: its own tabs, dialogs, recording and task. Shares logins (cookies) with the other groups."""
-    def __init__(self, browser, gid: str, name: str):
+    """One workspace: its own browser context (logins, cookies, history), tabs, dialogs, recording and task."""
+    def __init__(self, browser, gid: str, name: str, ctx, label: str = ""):
         self.b = browser
+        self.ctx = ctx
         self.id = gid
         self.name = name
+        self.label = label or ""
         self.files = browser.files
         self.own = []
         self.active = 0
@@ -218,8 +220,34 @@ class Group:
     def info(self):
         ps = self.pages()
         p = ps[max(0, min(self.active, len(ps) - 1))] if ps else None
-        return {"id": self.id, "name": self.name, "tabs": len(ps), "url": p.url if p else "",
+        return {"id": self.id, "name": self.name, "label": self.label, "tabs": len(ps), "url": p.url if p else "",
+                "urls": [x.url for x in ps if x.url not in ("", "about:blank")][:20], "active": self.active,
                 "recording": self.recording is not None}
+
+    async def attach(self):
+        await self.ctx.expose_binding("__shadowRecord", self._on_record)
+        await self.ctx.add_init_script(RECORDER_JS)
+        self.ctx.on("page", self._on_popup)
+        for p in self.ctx.pages:
+            self.adopt(p)
+
+    async def _on_record(self, source, payload):
+        import json
+        try:
+            self.capture(json.loads(payload))
+        except Exception:
+            return
+
+    async def open_urls(self, urls, active=0, reuse_first=False):
+        for i, u in enumerate(urls):
+            try:
+                if i == 0 and reuse_first:
+                    await self.navigate(u)
+                else:
+                    await self.new_tab(u)
+            except Exception as e:
+                log.warning("reopen tab %s: %s", u, e)
+        self.active = max(0, min(int(active or 0), len(self.pages()) - 1))
 
     async def run_guarded(self, coro, timeout=30):
         """Run a browser action; return early (success) if it opened a JS dialog that now blocks it."""
@@ -253,20 +281,20 @@ class Group:
         self.capture({"kind": "browser", "text": text})
 
     def adopt(self, page, focus=True):
-        if page in self.b.owner:
-            return
-        self.b.owner[page] = self
-        self.own.append(page)
-        page.on("dialog", self._on_dialog)
-        page.on("download", self._on_download)
-        page.on("filechooser", self._on_chooser)
-        page.on("framenavigated", lambda fr, p=page: self._on_nav(p, fr))
-        page.on("close", self._on_page_close)
-        page.on("popup", self._on_popup)
+        if page not in self.b.owner:
+            self.b.owner[page] = self
+            self.own.append(page)
+            page.on("dialog", self._on_dialog)
+            page.on("download", self._on_download)
+            page.on("filechooser", self._on_chooser)
+            page.on("framenavigated", lambda fr, p=page: self._on_nav(p, fr))
+            page.on("close", self._on_page_close)
         if focus:
             self.active = self.pages().index(page) if not page.is_closed() else self.active
 
     def _on_popup(self, page):
+        if page in self.b.owner:
+            return
         self.adopt(page)
         self.push_event(f"Opened new tab {page.url}")
 
@@ -315,9 +343,9 @@ class Group:
 
     async def ensure_page(self):
         if self.closed:
-            raise ValueError("This window group was closed")
+            raise ValueError("This workspace was closed")
         if not self.pages():
-            self.adopt(await self.b.ctx.new_page())
+            self.adopt(await self.ctx.new_page())
         return self.page()
 
     async def state(self):
@@ -330,7 +358,7 @@ class Group:
             tabs.append({"index": i, "url": p.url, "title": title or p.url, "active": i == self.active})
         dlg = self.pending_dialog
         return {
-            "group": {"id": self.id, "name": self.name},
+            "group": {"id": self.id, "name": self.name, "label": self.label},
             "tabs": tabs,
             "recording": self.recording is not None,
             "recorded": [e["desc"] for e in (self.recording or [])][-8:],
@@ -365,7 +393,7 @@ class Group:
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
     async def new_tab(self, url: str = ""):
-        self.adopt(await self.b.ctx.new_page())
+        self.adopt(await self.ctx.new_page())
         if url:
             await self.navigate(url)
 
@@ -593,16 +621,20 @@ class Group:
 
 
 class BrowserSession:
-    """One Chrome per user (shared logins) holding up to MAX_GROUPS independent window groups."""
+    """One Chrome per user. Workspace "1" (Main) uses the saved profile; every other workspace has its own
+    isolated context (own logins, cookies, history) whose storage is saved to disk so it survives restarts."""
     def __init__(self, files, profile_dir: Path, launch: dict = None):
         self.files = files
         self.profile_dir = Path(profile_dir)
+        self.state_dir = Path(str(self.profile_dir) + "-ws")
         self.launch = launch or {}
         self.ctx = None
+        self.extra = None
         self.groups: dict = {}
         self.owner: dict = {}
         self.closed = False
         self.last_used = time.time()
+        self._extra_lock = asyncio.Lock()
 
     def touch(self):
         self.last_used = time.time()
@@ -614,8 +646,13 @@ class BrowserSession:
     def group(self, gid: str = "1") -> Group:
         g = self.groups.get(str(gid or "1"))
         if not g:
-            raise ValueError("This window group was closed")
+            raise ValueError("This workspace was closed")
         return g
+
+    def _launch_kwargs(self):
+        kwargs = {"headless": True, "args": ["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"]}
+        kwargs.update(self.launch)
+        return kwargs
 
     async def start(self):
         pw = await get_playwright()
@@ -626,17 +663,10 @@ class BrowserSession:
                 os.unlink(prof / f)
             except FileNotFoundError:
                 pass
-        kwargs = dict(headless=True, viewport=VIEWPORT, accept_downloads=True,
-                      args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"])
-        kwargs.update(self.launch)
-        self.ctx = await pw.chromium.launch_persistent_context(str(prof), **kwargs)
-        await self.ctx.expose_binding("__shadowRecord", self._on_record)
-        await self.ctx.add_init_script(RECORDER_JS)
-        self.ctx.on("page", self._on_page)
+        self.ctx = await pw.chromium.launch_persistent_context(str(prof), viewport=VIEWPORT, accept_downloads=True, **self._launch_kwargs())
         self.ctx.on("close", self._on_ctx_close)
-        main = self.groups["1"] = Group(self, "1", "Main")
-        for p in self.ctx.pages:
-            main.adopt(p)
+        main = self.groups["1"] = Group(self, "1", "Main", self.ctx)
+        await main.attach()
         await main.ensure_page()
         try:
             await main.page().goto("https://www.google.com", wait_until="domcontentloaded", timeout=20000)
@@ -646,59 +676,116 @@ class BrowserSession:
     def _on_ctx_close(self, *_):
         self.closed = True
 
-    def _on_page(self, page):
-        async def orphan():
-            await asyncio.sleep(1.5)
-            if page not in self.owner and not page.is_closed() and "1" in self.groups:
-                self.groups["1"].adopt(page)
-                self.groups["1"].push_event(f"Opened new tab {page.url}")
-        asyncio.ensure_future(orphan())
+    async def _extra_browser(self):
+        async with self._extra_lock:
+            if self.extra is None or not self.extra.is_connected():
+                pw = await get_playwright()
+                self.extra = await pw.chromium.launch(**self._launch_kwargs())
+            return self.extra
 
-    async def _on_record(self, source, payload):
-        import json
-        g = self.owner.get(source.get("page"))
-        if not g:
-            return
-        try:
-            g.capture(json.loads(payload))
-        except Exception:
-            return
+    def _state_path(self, gid):
+        return self.state_dir / f"{safe_name(gid)}.json"
 
-    # ---------- groups ----------
+    # ---------- workspaces ----------
     async def groups_list(self):
         return [g.info() for g in self.groups.values()]
 
-    async def group_new(self, name="", url="", gid=""):
+    async def group_new(self, name="", url="", gid="", label="", urls=None, active=0):
         if gid and gid in self.groups:
             return self.groups[gid].info()
         if len(self.groups) >= MAX_GROUPS:
-            raise ValueError(f"You can have up to {MAX_GROUPS} window groups. Close one first.")
+            raise ValueError(f"You can have up to {MAX_GROUPS} workspaces. Close one first.")
         gid = gid or uuid.uuid4().hex[:8]
-        g = Group(self, gid, (name or "").strip()[:40] or f"Group {len(self.groups) + 1}")
+        st = self._state_path(gid)
+        ctx = await (await self._extra_browser()).new_context(viewport=VIEWPORT, accept_downloads=True,
+                                                              storage_state=str(st) if st.exists() else None)
+        g = Group(self, gid, (name or "").strip()[:40] or f"Workspace {len(self.groups) + 1}", ctx, label)
         self.groups[gid] = g
-        try:
-            await g.new_tab(url or "https://www.google.com")
-        except Exception as e:
-            log.warning("new group first page: %s", e)
+        await g.attach()
+        await g.open_urls(urls or [url or "https://www.google.com"], active)
         return g.info()
 
-    async def group_rename(self, gid, name):
+    async def group_rename(self, gid, name="", label=None):
         g = self.group(gid)
         g.name = (name or "").strip()[:40] or g.name
+        if label is not None:
+            g.label = label.strip()[:80]
         return g.info()
 
     async def group_close(self, gid):
         if str(gid) == "1":
-            raise ValueError("The main group cannot be closed")
+            raise ValueError("The main workspace cannot be closed")
         g = self.group(gid)
         self.groups.pop(g.id, None)
-        for p in list(g.own):
-            self.owner.pop(p, None)
+        try:
+            await g.ctx.close()
+        except Exception:
+            pass
+        self._state_path(g.id).unlink(missing_ok=True)
+        return True
+
+    async def groups_restore(self, groups):
+        """Reopen saved workspaces and their tabs (after a restart). Tasks are not resumed here."""
+        for snap in groups or []:
             try:
-                await p.close()
+                if snap["id"] == "1":
+                    main = self.groups["1"]
+                    main.name, main.label = snap.get("name") or "Main", snap.get("label", "")
+                    if snap.get("urls"):
+                        await main.open_urls(snap["urls"], snap.get("active", 0), reuse_first=True)
+                elif len(self.groups) < MAX_GROUPS:
+                    await self.group_new(name=snap.get("name", ""), gid=snap["id"], label=snap.get("label", ""),
+                                         urls=snap.get("urls"), active=snap.get("active", 0))
+            except Exception as e:
+                log.warning("restore workspace %s failed: %s", snap.get("id"), e)
+        return await self.groups_list()
+
+    async def save_states(self):
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        for g in list(self.groups.values()):
+            if g.id == "1":
+                continue
+            try:
+                try:
+                    await asyncio.wait_for(g.ctx.storage_state(path=str(self._state_path(g.id)), indexed_db=True), 15)
+                except TypeError:
+                    await asyncio.wait_for(g.ctx.storage_state(path=str(self._state_path(g.id))), 15)
+            except Exception as e:
+                log.warning("save workspace %s: %s", g.id, e)
+        return True
+
+    async def close(self):
+        await self.save_states()
+        for c in [g.ctx for g in self.groups.values() if g.id != "1"] + [self.ctx]:
+            try:
+                await c.close()
             except Exception:
                 pass
-        return True
+        if self.extra:
+            try:
+                await self.extra.close()
+            except Exception:
+                pass
+        self.closed = True
+
+
+async def save_workspaces(db, uid, target, b):
+    """Persist workspace names, labels and open tabs (plus their logins on disk) so they survive a restart."""
+    try:
+        groups = await b.groups_list()
+        if getattr(b, "closed", False) or not any(g["tabs"] for g in groups):
+            return
+        await b.save_states()
+    except Exception as e:
+        log.warning("save workspaces %s: %s", uid, e)
+        return
+    await db.workspaces.update_one({"user_id": uid, "target": target},
+                                   {"$set": {"groups": groups, "updated_at": now_iso()}}, upsert=True)
+
+
+async def load_workspaces(db, uid, target):
+    doc = await db.workspaces.find_one({"user_id": uid, "target": target}, {"_id": 0})
+    return (doc or {}).get("groups") or []
 
 
 _install_lock = asyncio.Lock()
@@ -762,6 +849,7 @@ async def get_session(user_id: str, db) -> BrowserSession:
             launch["executable_path"] = os.environ["CHROME_PATH"]
         s = BrowserSession(CloudFiles(user_id, db), user_dir(user_id, "profiles"), launch)
         await s.start()
+        await s.groups_restore(await load_workspaces(db, user_id, "cloud"))
         _sessions[user_id] = s
         return s
 
@@ -774,17 +862,28 @@ async def reap_idle(db, active_statuses, idle_secs=1800):
                 continue
             if await db.runs.find_one({"user_id": uid, "status": {"$in": active_statuses}}):
                 continue
+            await save_workspaces(db, uid, "cloud", s)
             _sessions.pop(uid, None)
             try:
-                await s.ctx.close()
+                await s.close()
             except Exception:
                 pass
 
 
-async def close_all():
-    for s in list(_sessions.values()):
+async def autosave(db, every=10):
+    while True:
+        await asyncio.sleep(every)
+        for uid, s in list(_sessions.items()):
+            if not s.closed:
+                await save_workspaces(db, uid, "cloud", s)
+
+
+async def close_all(db=None):
+    for uid, s in list(_sessions.items()):
         try:
-            await s.ctx.close()
+            if db is not None:
+                await save_workspaces(db, uid, "cloud", s)
+            await s.close()
         except Exception:
             pass
     _sessions.clear()

@@ -50,6 +50,7 @@ INDEXES: dict = {
     "devices": [IndexModel([("token_hash", ASCENDING)], name="token_hash"), IndexModel([("user_id", ASCENDING)], name="user")],
     "pair_codes": [IndexModel([("code", ASCENDING)], name="code", unique=True)],
     "user_settings": [IndexModel([("user_id", ASCENDING)], name="user", unique=True)],
+    "workspaces": [IndexModel([("user_id", ASCENDING), ("target", ASCENDING)], name="user_target", unique=True)],
     "schedules": [IndexModel([("user_id", ASCENDING)], name="user"), IndexModel([("enabled", ASCENDING), ("next_run_at", ASCENDING)], name="due")],
 }
 
@@ -212,6 +213,7 @@ async def browser_navigate(body: UrlIn, uid: str = Depends(uid_of), gid: str = D
     s = await session(uid, gid=gid)
     await take_over(uid, s, gid)
     await bcall(s.navigate(url=body.url))
+    asyncio.create_task(persist(uid, await session(uid, whole=True)))
     return {"ok": True}
 
 
@@ -225,7 +227,9 @@ async def browser_nav(body: NavIn, uid: str = Depends(uid_of), gid: str = Depend
 @api.post("/browser/tabs")
 async def browser_tabs(body: TabIn, uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
     s = await session(uid, gid=gid)
-    return await bcall(s.tabs(action=body.action, index=body.index, url=body.url))
+    out = await bcall(s.tabs(action=body.action, index=body.index, url=body.url))
+    asyncio.create_task(persist(uid, await session(uid, whole=True)))
+    return out
 
 
 @api.post("/browser/dialog")
@@ -251,10 +255,15 @@ async def target_files(uid: str = Depends(uid_of)):
     return await bcall(s.files_list())
 
 
-# ---------------- window groups ----------------
+# ---------------- workspaces ----------------
 class GroupIn(BaseModel):
     name: Optional[str] = ""
     url: Optional[str] = ""
+    label: Optional[str] = None
+
+
+async def persist(uid, b, target=None):
+    await sb.save_workspaces(db, uid, target or await target_of(uid), b)
 
 
 @api.get("/browser/groups")
@@ -269,24 +278,54 @@ async def groups_list(uid: str = Depends(uid_of)):
 @api.post("/browser/groups")
 async def groups_create(body: GroupIn, uid: str = Depends(uid_of)):
     b = await session(uid, whole=True)
-    return await bcall(b.group_new(name=body.name or "", url=body.url or ""), 409)
+    g = await bcall(b.group_new(name=body.name or "", url=body.url or "", label=body.label or ""), 409)
+    await persist(uid, b)
+    return g
 
 
 @api.put("/browser/groups/{gid}")
 async def groups_rename(gid: str, body: GroupIn, uid: str = Depends(uid_of)):
     b = await session(uid, whole=True)
-    return await bcall(b.group_rename(gid=gid, name=body.name or ""), 404)
+    g = await bcall(b.group_rename(gid=gid, name=body.name or "", label=body.label), 404)
+    await persist(uid, b)
+    return g
 
 
 @api.delete("/browser/groups/{gid}")
 async def groups_close(gid: str, uid: str = Depends(uid_of)):
     if await active_run(uid, gid):
-        raise HTTPException(409, "Shadow is working in this group. Stop its task first.")
+        raise HTTPException(409, "Shadow is working in this workspace. Stop its task first.")
     if gid == "1":
         raise HTTPException(400, "The main group cannot be closed")
     b = await session(uid, whole=True)
     await bcall(b.group_close(gid=gid), 404)
+    await persist(uid, b)
     return {"ok": True}
+
+
+@api.post("/runs/pause-all")
+async def runs_pause_all(uid: str = Depends(uid_of)):
+    runs = await db.runs.find({"user_id": uid, "status": "running"}, {"_id": 0}).to_list(50)
+    for run in runs:
+        await db.runs.update_one({"id": run["id"], "status": "running"}, {"$set": {"status": "paused"}})
+        with suppress(Exception):
+            s = await resolve_session(uid, run.get("target", "cloud"), run.get("group_id", "1"))
+            await s.corrections_start()
+    return {"paused": len(runs)}
+
+
+@api.post("/runs/resume-all")
+async def runs_resume_all(uid: str = Depends(uid_of)):
+    need_key()
+    runs = await db.runs.find({"user_id": uid, "status": "paused"}, {"_id": 0, "id": 1}).to_list(50)
+    done, errors = 0, []
+    for run in runs:
+        try:
+            await runs_resume(run["id"], uid)
+            done += 1
+        except HTTPException as e:
+            errors.append(str(e.detail))
+    return {"resumed": done, "errors": errors[:5]}
 
 
 # ---------------- recording ----------------
@@ -298,7 +337,7 @@ class NoteIn(BaseModel):
 async def record_start(uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
     run = await active_run(uid, gid)
     if run and run["status"] == "running":
-        raise HTTPException(409, "Shadow is running a task in this group. Pause or stop it first.")
+        raise HTTPException(409, "Shadow is running a task in this workspace. Pause or stop it first.")
     s = await session(uid, gid=gid)
     await bcall(s.record_start())
     return {"ok": True}
@@ -411,7 +450,7 @@ async def runs_create(body: RunIn, uid: str = Depends(uid_of), gid: str = Depend
 
 async def create_run(uid, skill_id, command, target, mode="real", schedule_id=None, gid="1"):
     if await active_run(uid, gid):
-        raise HTTPException(409, "A task is already in progress in this group. Finish, stop or resume it, or open another group.")
+        raise HTTPException(409, "A task is already in progress in this workspace. Finish, stop or resume it, or open another workspace.")
     s = await session(uid, target, gid)
     if (await bcall(s.state(), 409)).get("recording"):
         raise HTTPException(409, "Stop recording first")
@@ -831,6 +870,7 @@ async def helper_ws(ws: WebSocket):
     if first and not await active_run(uid):
         await db.user_settings.update_one({"user_id": uid}, {"$set": {"target": "laptop"}}, upsert=True)
     await db.devices.update_one({"id": dev["id"]}, {"$set": {"last_seen": sb.now_iso()}})
+    asyncio.create_task(restore_laptop(uid, conn))
     try:
         while True:
             msg = await ws.receive_json()
@@ -853,6 +893,21 @@ async def helper_ws(ws: WebSocket):
         hub.unregister(uid, conn)
         conn.fail_all()
         await db.devices.update_one({"id": dev["id"]}, {"$set": {"last_seen": sb.now_iso()}})
+
+
+async def restore_laptop(uid, conn):
+    groups = await sb.load_workspaces(db, uid, "laptop")
+    if groups:
+        with suppress(Exception):
+            await RemoteSession(conn).groups_restore(groups=groups)
+
+
+async def workspace_saver():
+    while True:
+        await asyncio.sleep(20)
+        for uid, conn in list(hub._conns.items()):
+            with suppress(Exception):
+                await persist(uid, RemoteSession(conn), "laptop")
 
 
 # ---------------- schedules ----------------
@@ -974,6 +1029,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 async def startup():
     app.state.index_task = asyncio.create_task(ensure_indexes())
     app.state.reaper = asyncio.create_task(sb.reap_idle(db, ACTIVE))
+    app.state.autosave = asyncio.create_task(sb.autosave(db))
+    app.state.ws_saver = asyncio.create_task(workspace_saver())
     app.state.browser_install = asyncio.create_task(sb.ensure_browser_installed())
     await db.runs.update_many({"group_id": {"$exists": False}}, {"$set": {"group_id": "1"}})
     await db.runs.update_many({"status": "running"}, {"$set": {"status": "paused", "summary": "Interrupted by a restart — press Resume to continue from the last step."}})
@@ -984,5 +1041,5 @@ async def shutdown():
     app.state.index_task.cancel()
     with suppress(asyncio.CancelledError):
         await app.state.index_task
-    await sb.close_all()
+    await sb.close_all(db)
     client.close()

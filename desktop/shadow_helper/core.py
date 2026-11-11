@@ -22,8 +22,9 @@ log = logging.getLogger("shadow.helper")
 ALLOWED = {"state", "frame", "input", "nav", "navigate", "tabs", "resolve_dialog", "upload", "cancel_chooser",
            "record_start", "record_note", "record_stop", "corrections_start", "corrections_take", "take_events",
            "clear_events", "elements", "page_text", "act", "current_url", "files_list", "file_read", "file_write",
-           "highlight", "unhighlight", "groups_list", "group_new", "group_rename", "group_close"}
-GROUP_ADMIN = {"groups_list", "group_new", "group_rename", "group_close"}
+           "highlight", "unhighlight", "groups_list", "group_new", "group_rename", "group_close",
+           "groups_restore", "save_states"}
+GROUP_ADMIN = {"groups_list", "group_new", "group_rename", "group_close", "groups_restore", "save_states"}
 PASSIVE = {"state", "frame", "current_url", "files_list", "take_events", "clear_events"}
 
 
@@ -237,7 +238,7 @@ class Helper:
     async def restart_browser(self):
         if self.session:
             try:
-                await self.session.ctx.close()
+                await self.session.close()
             except Exception:
                 pass
         self.session = None

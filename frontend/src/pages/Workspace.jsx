@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { useApi, errMsg, getGroup, setGroup } from "@/lib/api";
 import GroupBar from "@/components/shadow/GroupBar";
 import GroupGrid from "@/components/shadow/GroupGrid";
+import WorkspaceDialog from "@/components/shadow/WorkspaceDialog";
 import SideRail from "@/components/shadow/SideRail";
 import SidePanel from "@/components/shadow/SidePanel";
 import BrowserView from "@/components/shadow/BrowserView";
@@ -46,6 +47,7 @@ export default function Workspace() {
   const api = useApi();
   const [group, setGroupState] = useState(getGroup());
   const [view, setView] = useState("single");
+  const [wsDialog, setWsDialog] = useState(null);
   const [panel, setPanel] = useState("skills");
   const [bstate, setBstate] = useState(null);
   const [status, setStatus] = useState(null);
@@ -76,15 +78,24 @@ export default function Workspace() {
   useEffect(() => { if (groups.length && !current) switchGroup("1"); }, [groups, current, switchGroup]);
   useEffect(() => { if (current) document.title = SOLO ? `Shadow · ${current.name}` : "Shadow"; }, [current]);
 
-  const newGroup = async () => {
-    try { const r = await api.post("/browser/groups", { name: "" }); await loadGroups(); switchGroup(r.data.id); toast.success(`${r.data.name} opened`); }
-    catch (e) { toast.error(errMsg(e)); }
+  const saveWorkspace = async (body) => {
+    try {
+      if (wsDialog?.id) { await api.put(`/browser/groups/${wsDialog.id}`, { name: body.name, label: body.label }); loadGroups(); }
+      else { const r = await api.post("/browser/groups", body); await loadGroups(); switchGroup(r.data.id); toast.success(`${r.data.name} opened`); }
+      setWsDialog(null);
+    } catch (e) { toast.error(errMsg(e)); }
+  };
+  const allRuns = async (what) => {
+    try {
+      const r = await api.post(`/runs/${what}-all`);
+      toast(what === "pause" ? `Paused ${r.data.paused} workspace task(s) — you have control` : `Resumed ${r.data.resumed} workspace task(s)`, { description: r.data.errors?.join(" · ") });
+      loadGroups(); pollRun();
+    } catch (e) { toast.error(errMsg(e)); }
   };
   const closeGroup = async (g) => {
     try { await api.delete(`/browser/groups/${g.id}`); if (g.id === group) switchGroup("1"); loadGroups(); toast(`${g.name} closed`); }
     catch (e) { toast.error(errMsg(e)); }
   };
-  const renameGroup = async (id, name) => { try { await api.put(`/browser/groups/${id}`, { name }); loadGroups(); } catch (e) { toast.error(errMsg(e)); } };
 
   useEffect(() => { api.get("/status").then((r) => setStatus(r.data)).catch(() => {}); }, [api]);
 
@@ -133,7 +144,7 @@ export default function Workspace() {
       if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
       const r = await api.post("/runs", payload);
       setRunId(r.data.id); setRun(null); bump(); lastRunByGroup.current[getGroup()] = r.data.id; loadGroups();
-      toast.success(r.data.status === "running" ? `Shadow is on it in ${current?.name || "this group"}` : "Reply sent");
+      toast.success(r.data.status === "running" ? `Shadow is on it in ${current?.name || "this workspace"}` : "Reply sent");
     } catch (e) { toast.error(errMsg(e)); }
   };
 
@@ -162,9 +173,10 @@ export default function Workspace() {
         )}
         {!SOLO && <UpdateBanner target={target} />}
         {SOLO ? (
-          <p className="text-xs font-mono uppercase tracking-widest text-slate-400" data-testid="solo-group-name">Window group · <span className="text-[#00F0FF]">{current?.name || "…"}</span></p>
+          <p className="text-xs font-mono uppercase tracking-widest text-slate-400" data-testid="solo-group-name">Workspace · <span className="text-[#00F0FF]">{current?.name || "…"}</span>{current?.label && <span className="text-slate-500"> · {current.label}</span>}</p>
         ) : (
-          <GroupBar groups={groups} max={max} current={group} view={view} onView={setView} onSelect={switchGroup} onNew={newGroup} onClose={closeGroup} onRename={renameGroup} />
+          <GroupBar groups={groups} max={max} current={group} view={view} onView={setView} onSelect={switchGroup} onNew={() => setWsDialog({})} onClose={closeGroup} onEdit={(g) => setWsDialog(g)}
+            onPauseAll={() => allRuns("pause")} onResumeAll={() => allRuns("resume")} />
         )}
         {view === "grid" && !SOLO ? <GroupGrid groups={groups} onOpen={switchGroup} /> : (
           <BrowserView key={group} mode={mode} onState={setBstate} state={bstate} onTakeOver={() => isRunning && runAction("pause")} target={target} onTarget={changeTarget} />
@@ -173,6 +185,7 @@ export default function Workspace() {
           waiting={run?.status === "waiting_input"} busy={isRunning} groupName={current?.name} onRecordChange={loadGroups} onRun={startRun} onRecorded={setRecorded} />
       </main>
       <ActivityPanel run={run} onAction={runAction} onRunReal={(r) => startRun({ skill_id: r.skill_id, command: "" })} />
+      <WorkspaceDialog open={!!wsDialog} workspace={wsDialog?.id ? wsDialog : null} onClose={() => setWsDialog(null)} onSave={saveWorkspace} />
       <ApprovalDialog run={run} onDecide={(decision) => runAction("approval", { decision })} />
       <SkillReviewDialog events={recorded} onClose={() => setRecorded(null)} onSaved={() => { setRecorded(null); setPanel("skills"); bump(); }} />
     </div>
