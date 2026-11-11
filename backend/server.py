@@ -194,10 +194,11 @@ async def browser_state(uid: str = Depends(uid_of), gid: str = Depends(gid_of)):
     st = await bcall(s.state(), 503)
     st["target"] = await target_of(uid)
     offer = st.pop("save_password", None)
-    if offer and await vault.already_saved(db, uid, offer["origin"], offer["username"], offer["pw_sha"]):
+    kind = await vault.status(db, uid, offer["origin"], offer["username"], offer["pw_sha"]) if offer else None
+    if kind == "same":
         await bcall(s.dismiss_credential(), 409)
         offer = None
-    st["save_password"] = {"origin": offer["origin"], "username": offer["username"]} if offer else None
+    st["save_password"] = {"origin": offer["origin"], "username": offer["username"], "update": kind == "changed"} if offer else None
     active = next((t for t in st["tabs"] if t["active"]), None)
     st["saved_logins"] = await vault.logins_for(db, uid, vault.origin_of(active["url"])) if active and st.get("has_password_field") else []
     return st
@@ -230,23 +231,80 @@ async def browser_selection(uid: str = Depends(uid_of), gid: str = Depends(gid_o
 class BookmarkIn(BaseModel):
     url: str
     title: Optional[str] = ""
+    folder: Optional[str] = ""
+
+
+class BookmarkEdit(BaseModel):
+    title: Optional[str] = None
+    folder: Optional[str] = None
+
+
+class FolderRename(BaseModel):
+    old: str
+    new: Optional[str] = ""
+
+
+def _folder(f):
+    return re.sub(r"\s+", " ", (f or "").strip())[:60]
 
 
 @api.get("/bookmarks")
 async def bookmarks_list(uid: str = Depends(uid_of)):
-    return await db.bookmarks.find({"user_id": uid}, {"_id": 0, "user_id": 0}).sort("created_at", 1).to_list(300)
+    return await db.bookmarks.find({"user_id": uid}, {"_id": 0, "user_id": 0}).sort("created_at", 1).to_list(2000)
+
+
+async def _add_bookmark(uid, url, title, folder):
+    url = url.strip()
+    if not re.match(r"^https?://", url):
+        raise HTTPException(400, "Only web pages can be bookmarked")
+    if await db.bookmarks.count_documents({"user_id": uid}) >= 2000:
+        raise HTTPException(409, "You have 2000 bookmarks already")
+    doc = {"id": str(uuid.uuid4()), "user_id": uid, "url": url[:2000], "title": (title or url).strip()[:120],
+           "folder": _folder(folder), "created_at": sb.now_iso()}
+    r = await db.bookmarks.update_one({"user_id": uid, "url": doc["url"]}, {"$setOnInsert": doc}, upsert=True)
+    return r.upserted_id is not None, doc["url"]
 
 
 @api.post("/bookmarks")
 async def bookmarks_add(body: BookmarkIn, uid: str = Depends(uid_of)):
-    url = body.url.strip()
-    if not re.match(r"^https?://", url):
-        raise HTTPException(400, "Only web pages can be bookmarked")
-    if await db.bookmarks.count_documents({"user_id": uid}) >= 300:
-        raise HTTPException(409, "You have 300 bookmarks already")
-    doc = {"id": str(uuid.uuid4()), "user_id": uid, "url": url[:2000], "title": (body.title or url).strip()[:120], "created_at": sb.now_iso()}
-    await db.bookmarks.update_one({"user_id": uid, "url": doc["url"]}, {"$setOnInsert": doc}, upsert=True)
-    return await db.bookmarks.find_one({"user_id": uid, "url": doc["url"]}, {"_id": 0, "user_id": 0})
+    _, url = await _add_bookmark(uid, body.url, body.title, body.folder)
+    return await db.bookmarks.find_one({"user_id": uid, "url": url}, {"_id": 0, "user_id": 0})
+
+
+@api.put("/bookmarks/{bid}")
+async def bookmarks_edit(bid: str, body: BookmarkEdit, uid: str = Depends(uid_of)):
+    upd = {}
+    if body.title is not None and body.title.strip():
+        upd["title"] = body.title.strip()[:120]
+    if body.folder is not None:
+        upd["folder"] = _folder(body.folder)
+    r = await db.bookmarks.update_one({"id": bid, "user_id": uid}, {"$set": upd}) if upd else None
+    if r is not None and not r.matched_count:
+        raise HTTPException(404, "Not found")
+    return await db.bookmarks.find_one({"id": bid, "user_id": uid}, {"_id": 0, "user_id": 0})
+
+
+@api.post("/bookmarks/folders/rename")
+async def bookmarks_folder_rename(body: FolderRename, uid: str = Depends(uid_of)):
+    r = await db.bookmarks.update_many({"user_id": uid, "folder": _folder(body.old)}, {"$set": {"folder": _folder(body.new)}})
+    return {"moved": r.modified_count}
+
+
+@api.post("/bookmarks/import-chrome")
+async def bookmarks_import_chrome(uid: str = Depends(uid_of)):
+    conn = hub.get(uid)
+    if not conn:
+        raise HTTPException(409, "Open Shadow Helper on your laptop first — it reads your Chrome bookmarks there")
+    try:
+        items = await conn.call("chrome_bookmarks", timeout=20)
+    except Exception as e:
+        msg = str(e)
+        raise HTTPException(409, "Update Shadow Helper to the latest version to import Chrome bookmarks" if "Not allowed" in msg else msg[:200])
+    added = 0
+    for b in items[:2000]:
+        with suppress(HTTPException):
+            added += (await _add_bookmark(uid, b.get("url", ""), b.get("title"), b.get("folder")))[0]
+    return {"found": len(items), "added": added}
 
 
 @api.delete("/bookmarks/{bid}")
@@ -265,6 +323,31 @@ class OfferIn(BaseModel):
 @api.get("/passwords")
 async def passwords_list(uid: str = Depends(uid_of)):
     return await db.passwords.find({"user_id": uid}, {"_id": 0, "id": 1, "origin": 1, "username": 1, "updated_at": 1}).sort("origin", 1).to_list(1000)
+
+
+@api.post("/passwords/import")
+async def passwords_import(file: UploadFile = File(...), uid: str = Depends(uid_of)):
+    import csv
+    import io
+    raw = await file.read()
+    if len(raw) > 5_000_000:
+        raise HTTPException(413, "File too large")
+    try:
+        rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig"))))
+    except Exception:
+        raise HTTPException(400, "That isn't a Chrome passwords CSV file")
+    if rows and not {"url", "password"} <= {k.strip().lower() for k in rows[0].keys() if k}:
+        raise HTTPException(400, "Missing url/password columns — export from Chrome's Password Manager")
+    saved = skipped = 0
+    for r in rows[:5000]:
+        r = {(k or "").strip().lower(): (v or "") for k, v in r.items()}
+        origin = vault.origin_of(r.get("url", "").strip())
+        if not origin or not r.get("password"):
+            skipped += 1
+            continue
+        await vault.save(db, uid, origin, r.get("username", "").strip()[:200], r["password"][:500])
+        saved += 1
+    return {"saved": saved, "skipped": skipped}
 
 
 @api.delete("/passwords/{pid}")

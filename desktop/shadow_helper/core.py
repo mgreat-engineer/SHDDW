@@ -48,6 +48,36 @@ def chrome_user_data() -> Path:
     return Path.home() / ".config" / "google-chrome"
 
 
+def read_chrome_bookmarks(limit=2000):
+    """Read the user's Chrome bookmarks (every profile) as [{title, url, folder}] — read-only."""
+    out, seen = [], set()
+    root = chrome_user_data()
+    files = sorted(root.glob("*/Bookmarks")) if root.exists() else []
+    if not files:
+        raise ValueError("Couldn't find Chrome bookmarks on this computer")
+
+    def walk(node, path):
+        if len(out) >= limit:
+            return
+        if node.get("type") == "url":
+            url = node.get("url", "")
+            if url.startswith(("http://", "https://")) and url not in seen:
+                seen.add(url)
+                out.append({"title": node.get("name") or url, "url": url, "folder": " / ".join(path)[:60]})
+        for ch in node.get("children", []) or []:
+            walk(ch, path + [ch["name"]] if ch.get("type") == "folder" else path)
+
+    for f in files:
+        try:
+            roots = json.loads(f.read_text(encoding="utf-8")).get("roots", {})
+        except Exception:
+            continue
+        walk(roots.get("bookmark_bar", {}), [])
+        walk(roots.get("other", {}), ["Other bookmarks"])
+        walk(roots.get("synced", {}), ["Mobile bookmarks"])
+    return out
+
+
 class Config:
     def __init__(self):
         self.path = app_dir() / "config.json"
@@ -254,8 +284,12 @@ class Helper:
     async def handle(self, msg):
         mid, method, params = msg.get("id"), msg.get("method"), msg.get("params") or {}
         try:
-            if method not in ALLOWED:
+            if method not in ALLOWED and method != "chrome_bookmarks":
                 raise ValueError(f"Not allowed: {method}")
+            if method == "chrome_bookmarks":
+                res = read_chrome_bookmarks()
+                await self.ws.send(json.dumps({"id": mid, "result": res}, default=str))
+                return
             if method not in PASSIVE:
                 self.last_work = time.time()
             s = await self.ensure_browser()

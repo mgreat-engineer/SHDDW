@@ -21,7 +21,7 @@ TIMEOUTS = {
     "act": 120, "current_url": 10, "files_list": 20, "file_read": 30, "file_write": 30, "highlight": 10, "unhighlight": 10,
     "groups_list": 10, "group_new": 40, "group_rename": 10, "group_close": 20,
     "groups_restore": 180, "save_states": 60,
-    "take_credential": 10, "dismiss_credential": 10, "fill_login": 15, "selection_text": 10,
+    "take_credential": 10, "dismiss_credential": 10, "fill_login": 15, "selection_text": 10, "chrome_bookmarks": 20,
 }
 
 

@@ -11,16 +11,16 @@ export function SavePasswordBubble({ api, offer, onDone }) {
   if (!offer) return null;
   const act = async (action) => {
     setBusy(true);
-    try { const r = await api.post("/passwords/offer", { action }); if (r.data.saved) { toast.success("Password saved"); window.dispatchEvent(new Event("shadow:passwords")); } }
+    try { const r = await api.post("/passwords/offer", { action }); if (r.data.saved) { toast.success(offer.update ? "Password updated" : "Password saved"); window.dispatchEvent(new Event("shadow:passwords")); } }
     catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); onDone(); }
   };
   return (
     <div className="absolute right-3 top-[124px] z-30 w-[320px] rounded-lg bg-white border border-[#DADCE0] shadow-[0_4px_16px_rgba(60,64,67,0.25)] p-4 fade-up" data-testid="save-password-bubble">
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2"><KeyRound className="h-4 w-4 text-[#1A73E8]" /><p className="text-sm font-semibold text-[#202124]">Save password?</p></div>
+        <div className="flex items-center gap-2"><KeyRound className="h-4 w-4 text-[#1A73E8]" /><p className="text-sm font-semibold text-[#202124]" data-testid="save-password-title">{offer.update ? "Update password?" : "Save password?"}</p></div>
         <button onClick={() => act("dismiss")} className="p-0.5 rounded-full text-[#5F6368] hover:bg-[#F1F3F4]" data-testid="save-password-close"><X className="h-4 w-4" /></button>
       </div>
-      <p className="text-xs text-[#5F6368] mt-1">Shadow will keep it encrypted and can sign in for you in every workspace.</p>
+      <p className="text-xs text-[#5F6368] mt-1">{offer.update ? "You signed in with a new password. Replace the saved one so Shadow keeps signing in correctly." : "Shadow will keep it encrypted and can sign in for you in every workspace."}</p>
       <div className="mt-3 rounded-md bg-[#F1F3F4] px-3 py-2 text-xs">
         <p className="text-[#5F6368]">{host(offer.origin)}</p>
         <p className="text-[#202124] font-medium truncate" data-testid="save-password-username">{offer.username || "(no username)"}</p>
@@ -28,7 +28,7 @@ export function SavePasswordBubble({ api, offer, onDone }) {
       </div>
       <div className="flex justify-end gap-2 mt-3">
         <button disabled={busy} onClick={() => act("dismiss")} className="text-sm px-4 py-1.5 rounded-full border border-[#DADCE0] text-[#1A73E8] hover:bg-[#F1F3F4]" data-testid="save-password-dismiss">Not now</button>
-        <button disabled={busy} onClick={() => act("save")} className="text-sm px-4 py-1.5 rounded-full bg-[#1A73E8] text-white font-medium hover:bg-[#1557B0]" data-testid="save-password-save">Save</button>
+        <button disabled={busy} onClick={() => act("save")} className="text-sm px-4 py-1.5 rounded-full bg-[#1A73E8] text-white font-medium hover:bg-[#1557B0]" data-testid="save-password-save">{offer.update ? "Update" : "Save"}</button>
       </div>
     </div>
   );

@@ -39,6 +39,11 @@ async def already_saved(db, uid, origin, username, pw_sha) -> bool:
     return bool(await db.passwords.find_one({"user_id": uid, "origin": origin, "username": username, "pw_mac": _mac(pw_sha)}, {"_id": 1}))
 
 
+async def status(db, uid, origin, username, pw_sha) -> str:
+    d = await db.passwords.find_one({"user_id": uid, "origin": origin, "username": username}, {"_id": 0, "pw_mac": 1})
+    return "new" if not d else ("same" if d.get("pw_mac") == _mac(pw_sha) else "changed")
+
+
 async def logins_for(db, uid, origin):
     if not origin:
         return []
