@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 function IconMenu({ onPick }) {
   return (
     <TooltipProvider delayDuration={150}>
-      <nav className="min-w-0 flex items-center gap-1 overflow-x-auto thin-scroll" data-testid="home-icon-menu">
+      <nav className="min-w-0 flex items-center gap-1 overflow-x-auto thin-scroll max-md:[mask-image:linear-gradient(to_right,black_85%,transparent)] max-md:pr-6" data-testid="home-icon-menu">
         {PANELS.map(({ id, label, icon: Icon }) => (
           <Tooltip key={id}>
             <TooltipTrigger asChild>

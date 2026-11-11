@@ -97,3 +97,10 @@ Build a standalone browser like Polar browser with a mind of its own. It learns 
 - P1: Phase 2 remainder: buy signing certificates (Apple Developer ID $99/yr; Windows certificate or Azure Trusted Signing) and add them as GitHub secrets; email/push alert when a scheduled run waits for approval
 - P1: Move files to object storage for multi-instance production
 - P2: Phase 3 virtual-desktop control of other apps; richer iframe support; per-workspace Files folders
+
+## 2026-06 — Clean Main Screen
+- New home screen (default after sign-in): big task box with workspace picker + voice, workspace cards (name + status, Done/Failed shown after finish), new-workspace card, Pause/Resume all.
+- Top icon menu opens Skills/Templates/Reports/Schedules/Memory/Files/History/Passwords/Permissions/Laptop in a left sheet.
+- Clicking a card opens the full browser view (unchanged) with a "Home" back button; loads that workspace's last run. `?solo=1` popouts skip home.
+- Files: components/shadow/HomeScreen.jsx, HomeTaskBox.jsx, WorkspaceCards.jsx; pages/Workspace.jsx (screen state).
+- Tested: iteration_17, iteration_18 (100%).

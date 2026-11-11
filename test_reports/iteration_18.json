@@ -1,0 +1,24 @@
+{
+  "summary": "Iteration 18 (frontend only) retest of iteration_17 fixes. ALL 4 FIXES PASS. (1) 390px mobile: home-icon-menu has overflow-x:auto (scrollWidth 216 > clientWidth 175), document width stays 390 (no page overflow); scrolling to end and clicking home-nav-laptop opens sheet 'Laptop'; user-menu stays at x 338-366, clicking it opens Clerk popover with 'Sign out'. (2) Desktop 1920: unhovered card names use full width (Main/CTO WORKSPACE not truncated; long name 'TEST_Iter18 Long Workspace' only truncated by card width) and title attr = full name; on hover actions appear (opacity 1) with padding reserved. At 390px edit/popout/close + Watch show at opacity 1 without hover; edit opens workspace-dialog with the name filled in. (3) Task submitted from home (picker -> TEST ws, Enter) -> POST /api/runs?group=7039779b; card status went Idle -> Working -> Done and stayed Done 8s+ later. (4) After a reload (fresh session), clicking the card opens the browser view; activity panel shows run-goal 'TEST open example.com and tell me the page title' and summary 'The page title is: Example Domain' with a DONE badge (no activity-empty); Main card also loads its last run. back-to-home-button returns home. No page errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home header (390px)", "issues": ["Icon menu scrolls but has no visual hint (no fade or chevron), and icons are cut cleanly at the edge, so users may not notice there are more icons (Passwords, Permissions, Laptop). Optional: add an edge fade."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "The 'finished' (Done/Failed) state lives only in memory: after a reload a finished card shows IDLE again. This is fine for the requirement as stated, but showing last_run status from /browser/groups would make it survive reloads.",
+    "onOpen fetches the full /runs list (up to 100) just to find the last run of one group. A server-side ?group filter or a last_run field on groups would be cheaper.",
+    "Hover on desktop adds pr-24 to the name, so long names shrink further while hovered. Acceptable."
+  ],
+  "updated_files": ["/app/test_reports/iteration_18.json"],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100% of retest items"},
+  "seed_data_creation": "Created workspace 'TEST_Iter18 Long Workspace' (id 7039779b) via API, ran one task in it (completed), then deleted the workspace. The user's Main (paused) and CTO WORKSPACE (waiting_input) runs were not touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Each Clerk ticket works only once; make a new one per browser session (python /app/tests/clerk_token.py <email> ticket). Don't use Resume all, because it resumes the user's real paused runs."
+}
