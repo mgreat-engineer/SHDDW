@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+import json
+import time
 import re
 import tempfile
 import uuid
@@ -139,6 +141,36 @@ async def active_run(uid, gid=None):
     if gid:
         q["group_id"] = gid
     return await db.runs.find_one(q, {"_id": 0}, sort=[("created_at", -1)])
+
+
+_DL_CACHE = {"t": 0, "data": None}
+ASSETS = {"windows": "ShadowHelper-Setup-Windows.exe", "mac_arm": "ShadowHelper-mac-apple-silicon.dmg", "mac_intel": "ShadowHelper-mac-intel.dmg"}
+
+
+@api.get("/public/downloads")
+async def public_downloads():
+    """Public: installer links for the landing page (latest GitHub release of HELPER_REPO)."""
+    repo = (os.environ.get("HELPER_REPO") or "").strip()
+    if not repo:
+        return {"available": False, "version": None, "links": {}}
+    if _DL_CACHE["data"] and time.time() - _DL_CACHE["t"] < 600:
+        return _DL_CACHE["data"]
+
+    def fetch():
+        import urllib.request
+        req = urllib.request.Request(f"https://api.github.com/repos/{repo}/releases/latest", headers={"Accept": "application/vnd.github+json", "User-Agent": "shddw"})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            return json.loads(r.read())
+    try:
+        rel = await asyncio.to_thread(fetch)
+        names = {a["name"]: a["browser_download_url"] for a in rel.get("assets", [])}
+        links = {k: names[v] for k, v in ASSETS.items() if v in names}
+        data = {"available": bool(links), "version": (rel.get("tag_name") or "").replace("helper-v", ""), "links": links}
+    except Exception as e:
+        log.warning("downloads lookup failed: %s", e)
+        data = {"available": False, "version": None, "links": {}}
+    _DL_CACHE.update(t=time.time(), data=data)
+    return data
 
 
 @api.get("/status")

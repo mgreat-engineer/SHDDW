@@ -4,13 +4,16 @@ import { Show, SignIn, SignUp } from "@clerk/react";
 import ClerkAuthProvider from "@/components/auth/ClerkAuthProvider";
 import AuthLayout from "@/pages/AuthLayout";
 import Workspace from "@/pages/Workspace";
+import Landing from "@/pages/Landing";
 import { Toaster } from "@/components/ui/sonner";
+
+const IN_APP = new URLSearchParams(window.location.search).get("app") === "1";
 
 function Home() {
   return (
     <>
       <Show when="signed-in"><Workspace /></Show>
-      <Show when="signed-out"><Navigate to="/sign-in" replace /></Show>
+      <Show when="signed-out">{IN_APP ? <Navigate to="/sign-in" replace /> : <Landing />}</Show>
     </>
   );
 }
@@ -22,6 +25,7 @@ function App() {
         <ClerkAuthProvider>
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/download" element={<Landing />} />
             <Route path="/sign-in/*" element={<AuthLayout><SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" withSignUp /></AuthLayout>} />
             <Route path="/sign-up/*" element={<AuthLayout><SignUp routing="path" path="/sign-up" signInUrl="/sign-in" /></AuthLayout>} />
           </Routes>

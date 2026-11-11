@@ -4,7 +4,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from core import VERSION, Config, Helper, app_dir, copy_chrome_logins, pair
+from core import VERSION, Config, Helper, app_dir, copy_chrome_logins, open_app_window, pair
 from updater import Updater
 
 BG, FG, MUTED, ACCENT = "#0F111A", "#F1F5F9", "#94A3B8", "#00F0FF"
@@ -25,6 +25,8 @@ class App:
                                before_install=self._before_install)
         self.build()
         threading.Thread(target=self._run_loop, daemon=True).start()
+        if self.cfg["open_app_on_start"]:
+            root.after(800, lambda: open_app_window(self.cfg))
 
     def _run_loop(self):
         asyncio.set_event_loop(self.loop)
@@ -45,7 +47,13 @@ class App:
     def build(self):
         pad = {"padx": 18, "sticky": "we"}
         self.label(self.root, "Shadow Helper", 16, ACCENT, True).grid(row=0, pady=(16, 0), **pad)
-        self.label(self.root, "Lets Shadow use a hidden Chrome and the folders you pick on this computer.", 9, MUTED).grid(row=1, **pad)
+        self.label(self.root, "Runs Shadow's Chrome and the folders you pick on this computer.", 9, MUTED).grid(row=1, **pad)
+        top = tk.Frame(self.root, bg=BG)
+        top.grid(row=7, pady=(12, 0), **pad)
+        ttk.Button(top, text="Open Shadow", command=lambda: open_app_window(self.cfg)).pack(side="left")
+        self.show_browser = tk.BooleanVar(value=bool(self.cfg["show_browser"]))
+        tk.Checkbutton(top, text="Show Chrome windows while Shadow works", variable=self.show_browser, command=self.toggle_show,
+                       bg=BG, fg=FG, selectcolor="#181B26", activebackground=BG, activeforeground=FG).pack(side="left", padx=8)
         tk.Label(self.root, textvariable=self.status, bg="#181B26", fg=FG, anchor="w", padx=10, pady=8, wraplength=460, justify="left").grid(row=2, pady=12, **pad)
 
         link = tk.Frame(self.root, bg=BG)
@@ -88,6 +96,10 @@ class App:
         ttk.Button(up, text="Check for updates", command=lambda: self.submit(self.updater.check(force=True))).pack(anchor="w", pady=4)
         self.label(up, "New versions install on their own when Shadow isn't working on a task.", 9, MUTED).pack(fill="x")
         self.refresh_folders()
+
+    def toggle_show(self):
+        self.cfg["show_browser"] = self.show_browser.get()
+        self.submit(self.helper.restart_browser())
 
     def refresh_folders(self):
         self.folders.delete(0, "end")

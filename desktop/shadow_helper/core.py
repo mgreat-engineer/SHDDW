@@ -83,7 +83,8 @@ class Config:
         self.path = app_dir() / "config.json"
         default_dl = Path.home() / "Downloads" / "Shadow"
         self.data = {"server_url": "", "token": "", "device_name": platform.node() or "My laptop",
-                     "folders": [str(default_dl)], "downloads_folder": str(default_dl), "use_chrome_logins": True}
+                     "folders": [str(default_dl)], "downloads_folder": str(default_dl), "use_chrome_logins": True,
+                     "show_browser": True, "open_app_on_start": True}
         if self.path.exists():
             try:
                 self.data.update(json.loads(self.path.read_text()))
@@ -225,10 +226,40 @@ class LocalFolders:
         return f"Saved {p}"
 
 
+APP_URL = "https://shddw.com"
+
+
+def find_chrome():
+    if sys.platform == "win32":
+        for base in (os.environ.get("PROGRAMFILES"), os.environ.get("PROGRAMFILES(X86)"), os.environ.get("LOCALAPPDATA")):
+            p = Path(base or "") / "Google" / "Chrome" / "Application" / "chrome.exe"
+            if base and p.exists():
+                return str(p)
+    elif sys.platform == "darwin":
+        p = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+        if p.exists():
+            return str(p)
+    return shutil.which("google-chrome") or shutil.which("google-chrome-stable") or shutil.which("chromium")
+
+
+def open_app_window(cfg: Config):
+    """Open Shadow's interface in its own app window (Chrome app mode, no tabs or address bar)."""
+    import subprocess
+    import webbrowser
+    url = (cfg["server_url"] or APP_URL).rstrip("/")
+    exe = find_chrome()
+    if not exe:
+        webbrowser.open(url + "/?app=1")
+        return
+    subprocess.Popen([exe, f"--app={url}/?app=1", f"--user-data-dir={app_dir() / 'app-window'}", "--no-first-run",
+                      "--no-default-browser-check", "--window-size=1440,920"], close_fds=True)
+
+
 def launch_options(cfg: Config):
     opts = {"channel": "chrome"}
     if os.environ.get("SHADOW_CHROME_PATH"):
         opts = {"executable_path": os.environ["SHADOW_CHROME_PATH"]}
+    opts["headless"] = not cfg["show_browser"]
     if cfg["use_chrome_logins"]:
         # Let Chrome use the real OS keychain so copied logins can be decrypted.
         if sys.platform == "darwin":
