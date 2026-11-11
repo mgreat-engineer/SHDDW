@@ -18,14 +18,14 @@ export default function WorkspaceDialog({ open, workspace, onClose, onSave }) {
         </DialogHeader>
         <form onSubmit={submit} className="space-y-3">
           <label className="block text-xs text-slate-400">Name
-            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. PATOG authorizations" maxLength={40} className={`${field} mt-1`} data-testid="workspace-name-input" />
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Client A — invoices" maxLength={40} className={`${field} mt-1`} data-testid="workspace-name-input" />
           </label>
           <label className="block text-xs text-slate-400">Client or company
-            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. PATOG — Shadow keeps this workspace on this client" maxLength={80} className={`${field} mt-1`} data-testid="workspace-label-input" />
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Acme Corp — Shadow keeps this workspace on this client" maxLength={80} className={`${field} mt-1`} data-testid="workspace-label-input" />
           </label>
           {!editing && (
             <label className="block text-xs text-slate-400">Start page (optional)
-              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="e.g. carelon.com" className={`${field} mt-1 font-mono`} data-testid="workspace-url-input" />
+              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="e.g. example.com" className={`${field} mt-1 font-mono`} data-testid="workspace-url-input" />
             </label>
           )}
           <div className="flex justify-end gap-2 pt-2">

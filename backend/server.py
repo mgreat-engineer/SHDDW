@@ -51,6 +51,7 @@ INDEXES: dict = {
     "pair_codes": [IndexModel([("code", ASCENDING)], name="code", unique=True)],
     "user_settings": [IndexModel([("user_id", ASCENDING)], name="user", unique=True)],
     "workspaces": [IndexModel([("user_id", ASCENDING), ("target", ASCENDING)], name="user_target", unique=True)],
+    "templates": [IndexModel([("user_id", ASCENDING), ("updated_at", DESCENDING)], name="user_updated")],
     "schedules": [IndexModel([("user_id", ASCENDING)], name="user"), IndexModel([("enabled", ASCENDING), ("next_run_at", ASCENDING)], name="due")],
 }
 
@@ -328,6 +329,130 @@ async def runs_resume_all(uid: str = Depends(uid_of)):
     return {"resumed": done, "errors": errors[:5]}
 
 
+# ---------------- workspace templates ----------------
+class TemplateIn(BaseModel):
+    name: str
+    label: Optional[str] = ""
+    urls: List[str] = []
+    skill_id: Optional[str] = None
+    instructions: Optional[str] = ""
+
+
+class FromWorkspaceIn(BaseModel):
+    group_id: str
+    name: Optional[str] = ""
+    skill_id: Optional[str] = None
+    instructions: Optional[str] = ""
+
+
+async def _template_doc(uid, name, label, urls, skill_id, instructions):
+    skill_name = None
+    if skill_id:
+        sk = await db.skills.find_one({"id": skill_id, "user_id": uid}, {"_id": 0, "name": 1})
+        if not sk:
+            raise HTTPException(404, "Skill not found")
+        skill_name = sk["name"]
+    urls = [u.strip() for u in urls if u and u.strip() and not u.startswith(("about:", "chrome:", "data:"))][:20]
+    if not (name or "").strip():
+        raise HTTPException(400, "Give the template a name")
+    return {"name": name.strip()[:60], "label": (label or "").strip()[:80], "urls": urls, "skill_id": skill_id,
+            "skill_name": skill_name, "instructions": (instructions or "").strip()[:2000], "updated_at": sb.now_iso()}
+
+
+@api.get("/templates")
+async def templates_list(uid: str = Depends(uid_of)):
+    return await db.templates.find({"user_id": uid}, {"_id": 0}).sort("updated_at", -1).to_list(200)
+
+
+@api.post("/templates")
+async def templates_create(body: TemplateIn, uid: str = Depends(uid_of)):
+    doc = {"id": str(uuid.uuid4()), "user_id": uid, "created_at": sb.now_iso(),
+           **await _template_doc(uid, body.name, body.label, body.urls, body.skill_id, body.instructions)}
+    await db.templates.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.post("/templates/from-workspace")
+async def templates_from_ws(body: FromWorkspaceIn, uid: str = Depends(uid_of)):
+    s = await session(uid, gid=body.group_id)
+    st = await bcall(s.state(), 404)
+    g = st.get("group") or {}
+    return await templates_create(TemplateIn(name=body.name or g.get("name", "Workspace"), label=g.get("label", ""),
+                                             urls=[t["url"] for t in st["tabs"]], skill_id=body.skill_id,
+                                             instructions=body.instructions), uid)
+
+
+@api.put("/templates/{tid}")
+async def templates_update(tid: str, body: TemplateIn, uid: str = Depends(uid_of)):
+    data = await _template_doc(uid, body.name, body.label, body.urls, body.skill_id, body.instructions)
+    r = await db.templates.update_one({"id": tid, "user_id": uid}, {"$set": data})
+    if not r.matched_count:
+        raise HTTPException(404, "Not found")
+    return await db.templates.find_one({"id": tid, "user_id": uid}, {"_id": 0})
+
+
+@api.delete("/templates/{tid}")
+async def templates_delete(tid: str, uid: str = Depends(uid_of)):
+    r = await db.templates.delete_one({"id": tid, "user_id": uid})
+    if not r.deleted_count:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
+
+
+@api.post("/templates/{tid}/open")
+async def templates_open(tid: str, uid: str = Depends(uid_of)):
+    t = await db.templates.find_one({"id": tid, "user_id": uid}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Not found")
+    if t.get("skill_id"):
+        need_key()
+    b = await session(uid, whole=True)
+    g = await bcall(b.group_new(name=t["name"][:40], label=t.get("label", ""), urls=t.get("urls") or []), 409)
+    await persist(uid, b)
+    run, run_error = None, None
+    if t.get("skill_id"):
+        try:
+            run = await create_run(uid, t["skill_id"], t.get("instructions", ""), await target_of(uid), gid=g["id"])
+        except HTTPException as e:
+            run_error = str(e.detail)
+    return {"group": g, "run": run, "run_error": run_error}
+
+
+# ---------------- daily report ----------------
+NEEDS_YOU = ("awaiting_approval", "waiting_input", "paused")
+
+
+@api.get("/reports/daily")
+async def report_daily(date: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"), tz: str = "UTC", uid: str = Depends(uid_of)):
+    from zoneinfo import ZoneInfo
+    try:
+        zone = ZoneInfo(tz)
+        day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=zone)
+    except Exception:
+        raise HTTPException(400, "Bad date or time zone")
+    start, end = day.astimezone(timezone.utc).isoformat(), (day + timedelta(days=1)).astimezone(timezone.utc).isoformat()
+    runs = await db.runs.find({"user_id": uid, "created_at": {"$gte": start, "$lt": end}},
+                              {"_id": 0, "id": 1, "goal": 1, "status": 1, "summary": 1, "created_at": 1, "updated_at": 1, "step_count": 1,
+                               "workspace_name": 1, "workspace_label": 1, "group_id": 1, "skill_name": 1, "mode": 1, "pending": 1}).sort("created_at", 1).to_list(2000)
+    clients: dict = {}
+    for r in runs:
+        key = r.get("workspace_label") or ""
+        c = clients.setdefault(key, {"label": key or "No client set", "workspaces": set(), "counts": {}, "runs": []})
+        c["workspaces"].add(r.get("workspace_name") or "Main")
+        bucket = "needs_you" if r["status"] in NEEDS_YOU else r["status"]
+        c["counts"][bucket] = c["counts"].get(bucket, 0) + 1
+        c["runs"].append({**r, "question": (r.pop("pending", None) or {}).get("question")})
+    out = sorted(clients.values(), key=lambda c: (c["label"] == "No client set", c["label"].lower()))
+    for c in out:
+        c["workspaces"] = sorted(c["workspaces"])
+    totals = {}
+    for c in out:
+        for k, v in c["counts"].items():
+            totals[k] = totals.get(k, 0) + v
+    return {"date": date, "tz": tz, "total": len(runs), "totals": totals, "clients": out}
+
+
 # ---------------- recording ----------------
 class NoteIn(BaseModel):
     text: str
@@ -452,7 +577,8 @@ async def create_run(uid, skill_id, command, target, mode="real", schedule_id=No
     if await active_run(uid, gid):
         raise HTTPException(409, "A task is already in progress in this workspace. Finish, stop or resume it, or open another workspace.")
     s = await session(uid, target, gid)
-    if (await bcall(s.state(), 409)).get("recording"):
+    st = await bcall(s.state(), 409)
+    if st.get("recording"):
         raise HTTPException(409, "Stop recording first")
     skill = None
     if skill_id:
@@ -472,7 +598,8 @@ async def create_run(uid, skill_id, command, target, mode="real", schedule_id=No
            "status": "running", "plan": [], "scratch": {}, "messages": [], "corrections": [], "pending": None,
            "step_count": 0, "summary": "", "target": target, "mode": "preview" if mode == "preview" else "real",
            "tables": [], "schedule_id": schedule_id, "trigger": "schedule" if schedule_id else "manual",
-           "group_id": gid, "created_at": now, "updated_at": now}
+           "group_id": gid, "workspace_name": (st.get("group") or {}).get("name", "Main"),
+           "workspace_label": (st.get("group") or {}).get("label", ""), "created_at": now, "updated_at": now}
     await db.runs.insert_one(run)
     run.pop("_id", None)
     await bcall(s.clear_events())

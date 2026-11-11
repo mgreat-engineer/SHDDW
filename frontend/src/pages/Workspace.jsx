@@ -164,7 +164,8 @@ export default function Workspace() {
       {!SOLO && <SideRail panel={panel} setPanel={setPanel} />}
       {!SOLO && <SidePanel panel={panel} refresh={refresh} onRunSkill={(s) => startRun({ skill_id: s.id, command: "" })}
         onPreviewSkill={(s) => startRun({ skill_id: s.id, command: "", mode: "preview" })}
-        onSelectRun={setRunId} selectedRunId={runId} target={target} onTarget={changeTarget} />}
+        onSelectRun={setRunId} selectedRunId={runId} target={target} onTarget={changeTarget}
+        currentWorkspace={current} onTemplateOpened={async (g, r) => { if (r) lastRunByGroup.current[g.id] = r.id; await loadGroups(); switchGroup(g.id); bump(); }} />}
       <main className="flex-1 min-w-0 flex flex-col p-3 gap-3 relative z-10">
         {status && !status.openai_configured && (
           <div className="rounded-lg border border-[#FFB000]/40 bg-[#FFB000]/10 text-[#FFB000] text-sm px-4 py-2" data-testid="openai-key-banner">
