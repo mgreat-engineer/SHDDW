@@ -1,0 +1,29 @@
+{
+  "summary": "Retested the iteration-11 fixes on the cloud target. All 4 fixes work and the light regression passes. (1) Latency: the median POST /browser/input time is now about 0.09s for move, down, up and type, close to a plain GET at 0.07s (it was 0.33s). Over the WS, a drag of 26 events followed right away by a 'selection' message returned the full selection in 0.48s, identical to GET /selection 2s later. In the UI, a drag on example.com followed by an immediate Ctrl+C copied exactly what was highlighted (English and Arabic paragraphs, 291 chars, 2 of 2 trials), and the 'Copied to your clipboard' toast showed. (2) httpbin /headers shows Accept-Language exactly 'en-US,en;q=0.9' and the UA is Chrome/156 without HeadlessChrome. (3) With the Passwords panel open, the item was deleted (empty state shown), then a manual login and Save in the bubble added tomsmith to the panel straight away without reopening it. (4) A failed manual login ('Your password is invalid!', still on /login) showed no bubble, both in the UI and via API. A successful manual login reached /secure and showed the bubble with username tomsmith. The offer expired after about 90s (verified at 93s). Regression: the key button lists tomsmith, fill + Enter reaches /secure with no re-offer, the bookmark star toggles (title, chip 'Example Domain', removed, empty hint back), and right-click shows the menu where Select all + Copy works. Typing 36 chars fast into the page input matched exactly. test_iter11_vault_bookmarks.py passed 8/8. One new minor issue: a stale wrong-password offer reappears if the user navigates away within 90s.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/browser/state save_password (shadow_browser.py state() ~line 508)", "issue": "After a FAILED login the pending_cred (with the wrong password) is only hidden while the page stays on the same URL with a password field. If the user then navigates elsewhere within 90s (e.g. to example.com), the bubble appears for 'tomsmith' carrying the WRONG password. Clicking Save would upsert it (shadow_vault.save matches on origin+username) and overwrite the correct saved password. Reproduced via /app/tests/iter12_offer_expiry.py; I did not click Save. Suggested fix: once the failed-login condition is seen (same page, same URL, password field present after submit), clear pending_cred instead of only hiding it. Alternatively, only offer when the navigation away comes from the submit (the URL changes on the same page within a few seconds)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter12_retest.py", "/app/tests/iter12_offer_expiry.py", "/app/backend/tests/test_iter11_vault_bookmarks.py", "/app/test_reports/pytest/iter12.xml", "/app/test_reports/pytest/iter12_regr11.xml"],
+  "action_items": [
+    "Clear (not just hide) pending_cred when a login attempt is detected as failed, so a wrong password is never offered later or saved over the good one."
+  ],
+  "critical_code_review_comments": [
+    "shadow_browser.py state(): the failed-login filter is evaluated on every state poll and keeps the stale credential for 90s; failure detection should consume it.",
+    "shadow_vault.save upserts on origin+username, so any wrong-password save silently overwrites a working credential. Consider showing 'Update password?' when a different password exists for that username.",
+    "shadow_browser.py (~1130 lines) and server.py (~1300 lines) are still over the size guideline."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter12_retest.py (new)", "/app/tests/iter12_offer_expiry.py (new)"],
+  "success_rate": {"backend": "100% (4/4 new + 8/8 iter11 regression)", "frontend": "100% of requested flows (one minor stale-offer issue on the backend side)"},
+  "seed_data_creation": "Workspaces TEST_iter12 and TEST_expiry were created and deleted by id. The tomsmith saved login was deleted and re-saved through the UI bubble; the new id is 363649b9-c793-4942-b6c4-9e801f744287 and it is left in place. The bookmarks list is empty, as before (the test bookmark was added and removed). Main's active tab is now the-internet.herokuapp.com/secure, because I navigated it during UI testing.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Regenerate a Clerk ticket per browser session: python /app/tests/clerk_token.py shadow.a+clerk_test@example.com ticket. At a 1920x1080 viewport the frame is at x=440,y=176; on the-internet /login the username field is at (720,525), the password at (720,588) and the Login button at (567,648) in screen coordinates. The WS supports {type:'selection', id} and replies {type:'selection', id, text}. The PasswordsPanel delete uses window.confirm, so add a dialog handler. Run test_iter12_retest.py with -n 0."
+}

@@ -440,6 +440,12 @@ class Group:
         self.pending_chooser = None
 
     def _on_nav(self, page, frame):
+        c = self.pending_cred
+        if c and frame == page.main_frame and c.get("page") is page:
+            if frame.url == c["url"]:
+                self.pending_cred = None
+            else:
+                c["navigated"] = True
         if frame == page.main_frame:
             self.pending_dialog = None
             self.pending_chooser = None
@@ -505,7 +511,9 @@ class Group:
                 has_pw = await asyncio.wait_for(page.evaluate("() => !!document.querySelector('input[type=password]')"), 1)
             except Exception:
                 pass
-        if cred and (time.time() - cred["t"] > 90 or (cred.get("page") is page and page and page.url == cred["url"] and has_pw)):
+        if cred and (cred.get("page") is page and page and page.url == cred["url"] and has_pw and time.time() - cred["t"] > 5):
+            self.pending_cred = cred = None
+        if cred and (time.time() - cred["t"] > 90 or not (cred.get("navigated") or (page and page.url != cred["url"]))):
             cred = None
         import hashlib
         return {
