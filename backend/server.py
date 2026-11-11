@@ -346,15 +346,15 @@ class FromWorkspaceIn(BaseModel):
 
 
 async def _template_doc(uid, name, label, urls, skill_id, instructions):
+    if not (name or "").strip():
+        raise HTTPException(400, "Give the template a name")
     skill_name = None
     if skill_id:
         sk = await db.skills.find_one({"id": skill_id, "user_id": uid}, {"_id": 0, "name": 1})
         if not sk:
             raise HTTPException(404, "Skill not found")
         skill_name = sk["name"]
-    urls = [u.strip() for u in urls if u and u.strip() and not u.startswith(("about:", "chrome:", "data:"))][:20]
-    if not (name or "").strip():
-        raise HTTPException(400, "Give the template a name")
+    urls = list(dict.fromkeys(u.strip() for u in urls if u and u.strip() and not u.startswith(("about:", "chrome:", "data:"))))[:20]
     return {"name": name.strip()[:60], "label": (label or "").strip()[:80], "urls": urls, "skill_id": skill_id,
             "skill_name": skill_name, "instructions": (instructions or "").strip()[:2000], "updated_at": sb.now_iso()}
 
@@ -587,7 +587,7 @@ async def create_run(uid, skill_id, command, target, mode="real", schedule_id=No
             raise HTTPException(404, "Skill not found")
     base = f'Run skill "{skill["name"]}"' if skill else ""
     extra = (command or "").strip()
-    goal = (f"{base}. {extra}" if base and extra and schedule_id else extra or base)
+    goal = (f"{base}. {extra}" if base and extra else extra or base)
     if not goal:
         raise HTTPException(400, "Tell Shadow what to do")
     if mode == "preview":

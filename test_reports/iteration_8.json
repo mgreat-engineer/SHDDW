@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 8 tested Workspace Templates and the Daily Workspace Report on the cloud target. Backend: the new tests/test_iter8_templates_reports.py passes 11 of 11. Covered: template CRUD; name trimmed; blank name gives 400 and a missing name 422; unknown skill gives 404; about: and data: URLs are filtered out; user B gets 404 on PUT, DELETE and open of user A's template and does not see it in the list; 401 without a token. from-workspace snapshots the tab URLs and label, and uses an optional name override; an unknown group gives 404. Open creates a new workspace id with the template name, label and URLs. Cookies were checked on frame screenshots: the source workspace shows {tpl:1} and the opened template shows {}. Open with a skill starts a run in the new workspace (run.group_id is the new id, workspace_name and workspace_label are stored) and it completed. Opening at 10 workspaces gives 409. Daily report: a bad date pattern gives 422, an invalid date or time zone 400; runs are grouped by label with 'No client set' last; a paused run lands in needs_you and a stopped run in stopped; the day boundary was correct for Pacific/Kiritimati, Pacific/Pago_Pago and Asia/Kolkata, with the run absent on the previous local day; an empty day returns total 0. UI, all verified: the nav-templates and nav-reports rail links; the save-current dialog prefilled with the Main name and sites; cancel; the instructions field appears only after a skill is picked; save adds a list item showing the label, '2 sites · example.com' and 'Starts “TEST_UI_title”'; edit is prefilled including skill and instructions, and a rename saves. Open added a chip (3 to 4), switched to it, showed both template tabs (example.com and httpbin.org/get), and the Activity panel showed the skill run finishing ('Current page title: Example Domain'). Delete with confirm leaves the empty state. Reports panel: next-day is disabled on today; totals and per-client counts match the API; clicking a run opens it in Activity; prev and next day work; an old date shows report-empty. Regression: the grid view, Pause all being disabled when idle, and test_iter7 labels/unauth/pause-all-none (3 of 3) all pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/runs/{id}/stop + shadow_agent._loop", "issue": "Stopping a run does not cancel its engine task. If the in-flight step then errors, for example because the workspace is closed, the generic except in shadow_agent.py:417 overwrites status 'stopped' with 'failed' ('Engine error: This workspace was closed'). Reproduced: a SLOW run was paused, then stopped (the report showed stopped=1), then its workspace was closed, and the report now counts it as failed. This makes the daily report's stopped/failed counts wrong. Fix: in the except handlers, update only if the status is still 'running' (update_one({'id': rid, 'status': 'running'}, ...)), and/or cancel _tasks[rid] on stop."},
+      {"endpoint": "POST /api/templates/{id}/open (create_run goal)", "issue": "With a skill and instructions, the run goal is just the instructions text (e.g. 'Be brief' / 'Keep it short'), because create_run only joins base + extra when schedule_id is set. The report and the Activity title then show 'Be brief' instead of 'Run skill \"X\". Be brief'. The skill itself does still run (skill_id and loaded_skills are set). Suggest combining them for template-started runs too."},
+      {"endpoint": "POST /api/templates (_template_doc)", "issue": "A blank name with an unknown skill_id returns 404 rather than 400, because the skill is checked before the name. Duplicate URLs are kept (from-workspace saved ['…/cookies','…/cookies']); consider de-duplicating."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Reports panel", "issues": ["The 9px uppercase bucket labels (text-slate-500) in the 5-column count grid are very small and low contrast, and 'NEEDS YOU' wraps to 2 lines. Consider 10px and slate-400.", "Native <input type=date> is used for report-date-input (themed with color-scheme:dark). Acceptable, but it is not the shadcn calendar."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter8_templates_reports.py", "/app/test_reports/pytest/iter8.xml", "/app/tests/iter8_state.py"],
+  "action_items": [
+    "MEDIUM: guard the engine's failure and offline status writes so they never overwrite 'stopped' (or cancel the task on stop). This keeps the daily report counts correct.",
+    "LOW: build the template/skill run goal as 'Run skill \"<name>\". <instructions>' when instructions are given.",
+    "LOW: validate the name before the skill lookup in _template_doc; de-duplicate template URLs.",
+    "LOW: increase the size and contrast of the report bucket labels."
+  ],
+  "critical_code_review_comments": [
+    "runs_stop only flips the DB status. The asyncio task keeps going until its current step returns, and any exception then sets 'failed'. The same race applies to pause (the HelperOffline handler sets 'paused' with a summary).",
+    "report_daily compares ISO strings, which works because now_iso always produces '+00:00' offsets of the same length. Runs created before this feature have no workspace_label and fall into 'No client set' / 'Main', even if they ran in a labelled workspace. That is acceptable, but worth knowing.",
+    "templates_open calls need_key() before creating the workspace, so with no OpenAI key a template that has a skill cannot be opened at all, not even for just the sites. Consider opening the workspace and returning a run_error instead.",
+    "server.py is now 1173 lines; splitting templates and reports into routers is recommended."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter8_templates_reports.py (new)", "/app/tests/iter8_state.py (new helper)"],
+  "success_rate": {"backend": "100% (11/11; 1 minor status-overwrite bug found by inspection of report data)", "frontend": "100%"},
+  "seed_data_creation": "None kept. All TEST_ templates, workspaces and skills were deleted by id. The workspaces left are Main, PATOG ('PATOG Clinic') and 'TPL test' (f1fd249d, which existed before testing and was not touched). Completed, stopped and failed TEST runs remain in history; there is no run delete API.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with: cd /app/backend && pytest tests/test_iter8_templates_reports.py -n 0 -v -s (about 30s, uses 1-2 short GPT runs). Cookie frames are saved to /tmp/tpl_open_cookies.jpg and /tmp/tpl_src_cookies.jpg for visual check. python /app/tests/iter8_state.py dumps user A's workspaces, templates and TEST_ skills. UI sign-in needs a fresh ticket per browser session. The server clock is in Nov 2026, so the report date is 2026-11-11, and Playwright's browser time zone is UTC."
+}

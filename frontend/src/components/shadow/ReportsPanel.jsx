@@ -14,7 +14,7 @@ function Counts({ counts, testId }) {
       {COUNTS.map(([k, t, c]) => (
         <div key={k} className="rounded-md bg-white/5 px-1 py-1.5 text-center">
           <p className={`font-mono text-sm font-semibold ${c}`} data-testid={`${testId}-${k}`}>{counts[k] || 0}</p>
-          <p className="text-[9px] uppercase tracking-wider text-slate-500">{t}</p>
+          <p className="text-[10px] whitespace-nowrap text-slate-400">{t}</p>
         </div>
       ))}
     </div>

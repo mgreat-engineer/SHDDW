@@ -57,6 +57,13 @@ Build a standalone browser like Polar browser with a mind of its own. It learns 
 - UI: WorkspaceDialog (name, client, start page), chip/tile labels, edit pencil, Pause all / Resume all
 - Tested: iteration_7 (all pass, incl. real restart)
 
+## Workspace templates + Daily report (2026-06)
+- User choices: templates keep only sites + client label (no logins, fresh workspace each time); optional skill (+ instructions) starts when opened; report = task list and counts per client, in app only
+- API: /api/templates CRUD, POST /api/templates/from-workspace, POST /api/templates/{id}/open → {group, run, run_error}; GET /api/reports/daily?date&tz (buckets completed/needs_you/running/failed/stopped, grouped by workspace_label)
+- Runs store workspace_name/workspace_label; skill+command goals are combined; a stopped run is no longer overwritten as failed by a late engine error
+- UI: Templates panel + TemplateDialog, Daily report panel (date picker, totals, per-client cards, click a task to open it)
+- Tested: iteration_8 (11/11 backend, all UI flows) + minor fixes
+
 ## Backlog
 - P1: Phase 2 remainder: buy signing certificates (Apple Developer ID $99/yr; Windows certificate or Azure Trusted Signing) and add them as GitHub secrets; email/push alert when a scheduled run waits for approval
 - P1: Move files to object storage for multi-instance production

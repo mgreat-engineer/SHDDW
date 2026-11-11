@@ -411,10 +411,12 @@ Call exactly one tool."""
         except asyncio.CancelledError:
             raise
         except HelperOffline:
-            await self._set(run_id, status="paused", summary="Your laptop helper went offline. Reopen Shadow Helper, then press Resume.")
+            await self.db.runs.update_one({"id": run_id, "status": "running"}, {"$set": {"status": "paused", "updated_at": now_iso(),
+                                          "summary": "Your laptop helper went offline. Reopen Shadow Helper, then press Resume."}})
         except Exception as e:
             log.exception("run loop crashed")
-            await self._set(run_id, status="failed", summary=f"Engine error: {str(e)[:300]}")
+            await self.db.runs.update_one({"id": run_id, "status": "running"}, {"$set": {"status": "failed", "updated_at": now_iso(),
+                                          "summary": f"Engine error: {str(e)[:300]}"}})
 
     async def _after_finish(self, run):
         if not (run.get("corrections") and run.get("skill_id")):
