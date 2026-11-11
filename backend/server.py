@@ -1000,6 +1000,10 @@ async def browser_stream(ws: WebSocket, token: str = "", group: str = "1"):
         await ws.close()
         return
     alive = {"on": True}
+    with suppress(Exception):
+        first = await asyncio.wait_for(ws.receive_json(), 0.8)
+        if first.get("type") == "resize":
+            await s.set_viewport(first["width"], first["height"])
     pump = asyncio.create_task(s.stream(ws.send_bytes, lambda: alive["on"] and not s.closed))
     pump.add_done_callback(lambda t: t.cancelled() or not t.exception() or log.warning("stream ended: %r", t.exception()))
     try:

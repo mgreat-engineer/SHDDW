@@ -64,6 +64,13 @@ Build a standalone browser like Polar browser with a mind of its own. It learns 
 - UI: Templates panel + TemplateDialog, Daily report panel (date picker, totals, per-client cards, click a task to open it)
 - Tested: iteration_8 (11/11 backend, all UI flows) + minor fixes
 
+## Light Chrome UI + live stream + adjustable layout (2026-06)
+- User choices: whole app white Chrome-style; live video-like stream; always plain arrow cursor; left/right panels resizable + collapsible, workspace bar hideable (full screen)
+- Backend: WS /api/browser/stream?token=&group= (Clerk token; 4401/4400 close codes) streams Chrome screencast JPEG frames (~50-60 fps on animated pages), takes input (click/dblclick/type/key/scroll/move) and {type:resize}; Group.set_viewport makes the remote page fill the browser area; laptop target falls back to picture polling
+- Frontend: useLiveView hook, Chrome-replica BrowserView (grey tab strip, favicons, rounded omnibox, lock icon, live dot, panel toggles), react-resizable-panels layout (sizes remembered), light palette across all panels/dialogs/Clerk; Calendar date picker + shadcn Select
+- shddw.com "unsupported protocol": Emergent side OK (SSL active); user must fix DNS (remove AAAA/extra records, Cloudflare grey cloud) / wait for propagation
+- Tested: iteration_9 + iteration_10 (all fixes verified), stale first frame fixed after
+
 ## Backlog
 - P1: Phase 2 remainder: buy signing certificates (Apple Developer ID $99/yr; Windows certificate or Azure Trusted Signing) and add them as GitHub secrets; email/push alert when a scheduled run waits for approval
 - P1: Move files to object storage for multi-instance production

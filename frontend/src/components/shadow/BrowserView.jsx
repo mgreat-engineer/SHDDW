@@ -52,10 +52,11 @@ export default function BrowserView({ mode, state, onState, onTakeOver, target, 
   useEffect(() => {
     const el = screenRef.current;
     if (!el) return;
-    let t;
+    let t, first = true;
     const ro = new ResizeObserver(([e]) => {
       clearTimeout(t);
-      t = setTimeout(() => resize(Math.round(e.contentRect.width), Math.round(e.contentRect.height)), 250);
+      const go = () => resize(Math.round(e.contentRect.width), Math.round(e.contentRect.height));
+      if (first) { first = false; go(); } else t = setTimeout(go, 250);
     });
     ro.observe(el);
     return () => { ro.disconnect(); clearTimeout(t); };

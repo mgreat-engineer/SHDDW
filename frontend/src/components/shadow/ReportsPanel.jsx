@@ -26,6 +26,7 @@ function Counts({ counts, testId }) {
 export default function ReportsPanel({ refresh, onSelectRun }) {
   const api = useApi();
   const [date, setDate] = useState(today());
+  const [calOpen, setCalOpen] = useState(false);
   const [data, setData] = useState(null);
   const load = useCallback(() => api.get("/reports/daily", { params: { date, tz: TZ } }).then((r) => setData(r.data)).catch(() => setData({ clients: [], totals: {}, total: 0 })), [api, date]);
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, [load, refresh]);
@@ -34,7 +35,7 @@ export default function ReportsPanel({ refresh, onSelectRun }) {
     <div className="space-y-3" data-testid="reports-panel">
       <div className="flex items-center gap-2">
         <button onClick={() => setDate(shift(date, -1))} className={nav} data-testid="report-prev-day"><ChevronLeft className="h-3.5 w-3.5" /></button>
-        <Popover>
+        <Popover open={calOpen} onOpenChange={setCalOpen}>
           <PopoverTrigger asChild>
             <button data-testid="report-date-input" className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-[#DADCE0] rounded-md px-2 py-1 text-xs text-[#202124] hover:bg-[#F1F3F4]">
               <CalendarDays className="h-3.5 w-3.5 text-[#5F6368]" />{new Date(`${date}T12:00:00`).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
@@ -42,7 +43,7 @@ export default function ReportsPanel({ refresh, onSelectRun }) {
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="center">
             <Calendar mode="single" selected={new Date(`${date}T12:00:00`)} disabled={{ after: new Date() }}
-              onSelect={(d) => d && setDate(d.toLocaleDateString("en-CA"))} initialFocus data-testid="report-calendar" />
+              onSelect={(d) => { if (d) { setDate(d.toLocaleDateString("en-CA")); setCalOpen(false); } }} initialFocus data-testid="report-calendar" />
           </PopoverContent>
         </Popover>
         <button onClick={() => setDate(shift(date, 1))} disabled={date >= today()} className={nav} data-testid="report-next-day"><ChevronRight className="h-3.5 w-3.5" /></button>

@@ -1,0 +1,33 @@
+{
+  "summary": "Retest of the iteration-9 fixes on the cloud target. All requested fixes work. (1) The frame matches the browser area: frame-image naturalWidth/Height == /api/browser/state viewport == browser-screen size after login (1058x821, even when the group was first forced to a stale 1280x800), after reload, after switching workspaces, after opening the solo pop-out (1102x688), after toggling the left, right and workspace-bar panels, after dragging the resize handle and after opening/closing tabs. iter9_main_probe: the reconnect and animated sessions show only (1058,821). (2) Clicks map to the right spot: clicking the Wikipedia search icon opened the search box, typed 'Alan Turing' appeared in it with suggestions, and Enter navigated to /wiki/Alan_Turing. (3) WebSocket close codes: invalid token gives 4401 and a bad group gives 4400. (4) The solo pop-out has no toggle-workspace-bar, toggle-left-panel, side-rail or group-bar; toggle-right-panel and solo-group-name are present. (5) HistoryPanel hover border is light (#DADCE0 -> #BDC1C6). Template skill picker is a shadcn Select (role=combobox); picking 'Example learn more' shows the instructions field, and saving persists skill_id and instructions (checked via the API). The Reports date button opens the shadcn Calendar, future days are disabled (24 disabled cells), picking Nov 1 loaded that day, and prev/next still work. (6) Regression checks passed: test_iter9_stream.py 7/7 (WS fps 60), UI fps 47 on an animated page, Live indicator on, workspace switch and tabs work. Two minor findings, listed below.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "WS /api/browser/stream (Group.stream / set_viewport)", "issue": "Brief stale frames on first connect: about 300-450ms show a 1280x800 frame at the old viewport, then a 1031x800 frame (new page scaled into the old maxWidth/maxHeight), before the correct 1058x821. Seen in iter9_main_probe's first session and in the UI sampler right after login. It fixes itself quickly, so it is cosmetic."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ReportsPanel date Popover", "issue": "The Calendar popover stays open after picking a day. The date does load, but users usually expect the popover to close on select.", "selector": "[data-testid='report-date-input']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter9_stream.py", "/app/tests/iter9_main_probe.py", "/app/tests/iter10_setvp.py", "/app/test_reports/pytest/iter10_stream.xml"],
+  "action_items": [
+    "Optional: remove the stale first frames. Either have the client pass width/height as WS query params so the viewport is applied before the first screenshot, or update self.viewport before the per-page set_viewport_size loop and drop screencast frames whose metadata deviceWidth/Height differ from the viewport",
+    "Optional: make the Reports Popover controlled (open/onOpenChange) and close it in onSelect"
+  ],
+  "critical_code_review_comments": [
+    "BrowserView.point() still maps clicks with state.viewport, not imgRef.naturalWidth/Height. It works now because the sizes match, but using the natural size would cover the transient window and the 1s state polling lag",
+    "When two windows show the same group (main plus solo pop-out), each sends its own resize and the last one wins, so the other window is letterboxed. This is acceptable but worth knowing",
+    "ReportsPanel uses toLocaleDateString('en-CA') in the browser's local time while the report label says UTC. Days can be off by one near midnight for non-UTC users"
+  ],
+  "updated_files": ["/app/tests/iter10_setvp.py (new helper: force a group's viewport via WS resize)"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created a TEST_wiki workspace (a13f349e) and a TEST_tpl_iter10 template. Both were deleted by id. Group 1 viewport was restored to 1058x821. The user's Main and 'SEARCH FOR EVENTS ONLINE' workspaces are unchanged.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Clerk sign-in tickets are single-use: regenerate /tmp/tk.txt (python /app/tests/clerk_token.py shadow.a+clerk_test@example.com ticket > /tmp/tk.txt) before every browser_automation session. Group is held in memory (lib/api currentGroup), not localStorage, so pass the group id explicitly when querying /api/browser/state. Popup windows in headless mode report naturalWidth 0 until bring_to_front() is called. To simulate a stale viewport, run python /app/tests/iter10_setvp.py 1 1280 800 before login.",
+  "rca of the issue": "Stale first frames: Group.stream sends page.screenshot() right away at the current self.viewport, before the client's resize message is processed. set_viewport then resizes pages while the old screencast is still running with the old maxWidth/maxHeight (1280x800), so one 1031x800 frame (1058x821 scaled to fit) is emitted before the loop notices the key change and restarts the screencast."
+}
