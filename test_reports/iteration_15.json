@@ -1,0 +1,23 @@
+{
+  "summary": "Iteration 15 RETEST of the iteration-14 minor issues on the cloud target. All fixes verified. Backend: tests/test_iter15_retest.py + regression test_iter14_folders_import.py = 21/21 passed. Passwords import: 'hello world', empty file, 'foo,bar' header-only, BOM-only and whitespace-only files all -> 400 'Missing url/password columns'; a valid header-only Chrome CSV -> 200 {saved:0, skipped:0}. Import-chrome with a simulated helper returning None, a dict, a string -> 200 {found:0, added:0} (no 500); a list [1,'x',None,['y'],{dict with folder:null}] -> {found:1, added:1} and the bookmark lands in the bar (folder ''). Simulated helper revoked after each case; target back to cloud. UI (Playwright, desktop): starring example.com shows 'Bookmark added'; choosing 'New folder…' with an empty name shows toast 'Give the new folder a name' and the editor stays open; naming it TEST_F15 makes the chip; re-opening the star shows 'Edit bookmark' with folder TEST_F15 preselected; an empty 'New folder…' on the existing bookmark keeps it in TEST_F15. Folder menu: remove X has opacity 0.6 without hover (visible); 'Rename folder…' opens the in-app input prefilled with the name; Save renamed the chip to TEST_R15 and no window.prompt/dialog fired. Regression of the update-password flow (tests/iter14_pw_update.py, API): old saved password -> no offer; real password typed -> update:true; save keeps the single tomsmith record; key fill then logs in with no re-offer; same password -> no offer. tomsmith is restored to SuperSecretPassword!.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Bookmarks bar (top level)", "issues": ["The remove X on top-level bar bookmarks (not inside folders) is still opacity-0 until hover. That is out of scope for this request and matches Chrome, but touch users can't find it there."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter15_retest.py", "/app/backend/tests/test_iter14_folders_import.py", "/app/tests/iter14_pw_update.py", "/app/test_reports/pytest/iter15.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Carried over from iteration 14: _add_bookmark makes about 2 DB round trips per item on Chrome import (up to 2000 items). Consider counting once and using bulk upserts.",
+    "Carried over: folder names are used directly in data-testid values, so they can contain spaces and slashes."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter15_retest.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None kept. The TEST bookmark was deleted, the simulated helper devices were revoked and the TEST_iter14_pw workspace was deleted. tomsmith is still saved with SuperSecretPassword!.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: cd /app/backend && pytest tests/test_iter15_retest.py tests/test_iter14_folders_import.py -n 0. Both reuse the fake-helper helper from the iter14 file. UI: read the ticket from /tmp/ticket (written by clerk_token.py ... ticket), go to /sign-in?__clerk_ticket=..., fill browser-url-input, then use bookmark-star-button. The pre-existing 'Test Laptop' device is offline and is not test data."
+}

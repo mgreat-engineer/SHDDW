@@ -3,7 +3,7 @@
 # Run serially: cd /app/backend && pytest tests/test_iter8_templates_reports.py -n 0 -v -s
 import subprocess
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest

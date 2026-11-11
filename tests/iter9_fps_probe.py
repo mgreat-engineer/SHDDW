@@ -1,5 +1,5 @@
 # Probe: stream fps on an animated page in a TEST workspace, and page visibility state (python iter9_fps_probe.py)
-import asyncio, json, subprocess, sys, time
+import asyncio, subprocess, sys, time
 import requests, websockets
 
 BASE = open("/app/frontend/.env").read().split("REACT_APP_BACKEND_URL=")[1].split()[0].rstrip("/")

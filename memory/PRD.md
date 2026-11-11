@@ -79,6 +79,13 @@ Build a standalone browser like Polar browser with a mind of its own. It learns 
 - Input latency cut from ~0.33s to ~0.09s (run_guarded)
 - Tested: iteration_11, 12, 13 (all pass)
 
+## Password update prompt, bookmark folders, Chrome import (2026-06)
+- Signing in with a new password for a saved username shows "Update password?" (vault.status new/same/changed)
+- Bookmarks have a `folder` (one level; Chrome nested folders joined " / "); star pop-up editor (name, folder, new folder, remove); folder chips with drop-down menus + in-app rename; PUT /api/bookmarks/{id}, POST /api/bookmarks/folders/rename
+- Import Chrome bookmarks: POST /api/bookmarks/import-chrome asks the laptop helper (RPC chrome_bookmarks → read_chrome_bookmarks over every Chrome profile); old helpers get "Update Shadow Helper"; no helper → 409
+- Import Chrome passwords: POST /api/passwords/import (Chrome CSV) from the Passwords panel
+- Tested: iteration_14 + 15 (all pass)
+
 ## Backlog
 - P1: Phase 2 remainder: buy signing certificates (Apple Developer ID $99/yr; Windows certificate or Azure Trusted Signing) and add them as GitHub secrets; email/push alert when a scheduled run waits for approval
 - P1: Move files to object storage for multi-instance production

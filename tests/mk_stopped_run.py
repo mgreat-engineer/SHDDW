@@ -1,5 +1,5 @@
 # Helper: create a stopped run in a given group (for UI resume-from-history test). usage: python mk_stopped_run.py <gid>
-import subprocess, sys, time, requests
+import subprocess, time, requests
 from dotenv import dotenv_values
 API = dotenv_values("/app/frontend/.env")["REACT_APP_BACKEND_URL"].rstrip("/") + "/api"
 s = requests.Session()

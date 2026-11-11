@@ -86,7 +86,7 @@ function Mark({ b, onOpen, onRemove, wide }) {
       <Fav url={b.url} />
       <span className="text-xs text-[#3C4043] truncate flex-1">{b.title}</span>
       <button onClick={(e) => { e.stopPropagation(); onRemove(b); }} data-testid={`bookmark-remove-${b.id}`} title="Remove"
-        className={`${wide ? "opacity-60" : "opacity-0"} group-hover/bm:opacity-100 p-0.5 rounded-full text-[#5F6368] hover:bg-[#DADCE0]`}><X className="h-3 w-3" /></button>
+        className={`${wide ? "opacity-60" : "opacity-0 [@media(hover:none)]:opacity-100"} group-hover/bm:opacity-100 p-0.5 rounded-full text-[#5F6368] hover:bg-[#DADCE0]`}><X className="h-3 w-3" /></button>
     </div>
   );
 }

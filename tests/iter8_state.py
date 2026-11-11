@@ -1,5 +1,5 @@
 # quick state dump for user A: workspaces + templates (+ optional delete of TEST_ templates by id listed)
-import subprocess, sys, requests
+import subprocess, requests
 from dotenv import dotenv_values
 API = dotenv_values("/app/frontend/.env")["REACT_APP_BACKEND_URL"].rstrip("/") + "/api"
 tok = subprocess.check_output(["python", "/app/tests/clerk_token.py", "shadow.a+clerk_test@example.com"], text=True).strip()

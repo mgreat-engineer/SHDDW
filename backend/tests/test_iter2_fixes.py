@@ -1,7 +1,6 @@
 # Shadow iteration-2 retest: dialog robustness, stale events, agent confirm click, reject => blocked_risks
 # Run serially: pytest /app/backend/tests/test_iter2_fixes.py -n 0 -v -s
 import subprocess
-import threading
 import time
 import urllib.parse
 

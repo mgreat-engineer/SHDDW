@@ -1,5 +1,5 @@
 # Probe: WS 'move' during a running task must not pause it; 'click' does pause (take over). python iter9_move_probe.py <group>
-import asyncio, json, subprocess, sys, time
+import asyncio, json, subprocess, sys
 import requests, websockets
 
 BASE = open("/app/frontend/.env").read().split("REACT_APP_BACKEND_URL=")[1].split()[0].rstrip("/")

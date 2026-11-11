@@ -4,7 +4,6 @@ import logging
 import os
 import re
 import uuid
-from pathlib import Path
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 

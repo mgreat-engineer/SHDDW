@@ -1,6 +1,5 @@
 # Shadow AI browser - backend regression tests (auth, CRUD, browser, recording, dialogs, files, isolation, runs, approvals)
 # Run serially: pytest /app/backend/tests/test_shadow_api.py -n 0 -v
-import os
 import subprocess
 import time
 import urllib.parse

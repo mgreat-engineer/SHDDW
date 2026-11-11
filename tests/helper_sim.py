@@ -1,4 +1,4 @@
-import asyncio, base64, json, os, sys, logging
+import asyncio, os, sys, logging
 sys.path.insert(0, "/app/desktop/shadow_helper"); sys.path.insert(0, "/app/backend")
 os.environ["HOME"] = "/tmp/helperhome"
 import core

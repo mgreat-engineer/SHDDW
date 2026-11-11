@@ -1,7 +1,6 @@
 # Shadow iteration-3: laptop helper (pairing, websocket, target switching, remote browser/files, offline/resume, unlink, cloud regression)
 # Run serially: pytest /app/backend/tests/test_laptop_helper.py -n 0 -v -s
 import asyncio
-import base64
 import json
 import os
 import subprocess
