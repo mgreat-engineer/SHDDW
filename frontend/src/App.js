@@ -11,7 +11,9 @@ const Workspace = lazy(() => import("@/pages/Workspace"));
 const Loading = () => <div className="h-screen flex items-center justify-center text-sm text-[#5F6368]" data-testid="app-loading">Loading Shadow…</div>;
 
 const IN_APP = (() => {
-  if (new URLSearchParams(window.location.search).get("app") === "1") sessionStorage.setItem("shadow-app", "1");
+  const q = new URLSearchParams(window.location.search);
+  if (q.get("app") === "1") sessionStorage.setItem("shadow-app", "1");
+  if (q.get("link")) sessionStorage.setItem("shadow-link", q.get("link"));
   return sessionStorage.getItem("shadow-app") === "1";
 })();
 

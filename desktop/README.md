@@ -12,8 +12,8 @@ Lets your Shadow account run a hidden Google Chrome on your Windows or Mac lapto
 
 ## Set it up
 1. Install Google Chrome if it isn't already on the computer.
-2. Install and open Shadow Helper.
-3. In Shadow, open the **Laptop** panel, press **Get connection code**, and paste the code into the helper. Then press **Link**.
+2. Install and open Shadow. It opens in its own window straight away; its settings panel stays in the taskbar / Dock.
+3. Sign in inside the Shadow window and press **Link computer**. (You can still paste a connection code from the **Laptop** panel instead.)
 4. Add the folders Shadow may use. Downloads are saved to the folder you mark.
 5. Optional: close Chrome, then press **Copy my Chrome logins now**.
 

@@ -110,3 +110,9 @@ Build a standalone browser like Polar browser with a mind of its own. It learns 
 - Per-user browser start lock (was global, serialized all users).
 - Workspace page lazy-loaded; home polls runs every 4s (1.5s in browser view); skeleton cards while loading.
 - Tested: iteration_19 (100%).
+
+## 2026-06 — Shadow desktop app (sign in inside the app)
+- Desktop app now opens Shadow in its own app window on launch; settings window starts minimized (Mac: Dock click reopens).
+- Auto-link without codes: app POSTs /api/helper/link → opens window with ?app=1&link=<id>; signed-in web shows "Link this computer?" dialog → POST /api/helper/link/{id}/approve; app polls /api/helper/link/{id}/poll?secret=… and receives device token (30-min expiry, single use). Connection code still works as fallback.
+- Local-loopback approach rejected: Chrome Local Network Access blocks https pages calling 127.0.0.1.
+- Installers build via GitHub Actions after Save to GitHub (public repo). Code signing still pending.

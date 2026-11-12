@@ -125,6 +125,6 @@ jobs:
           make_latest: true
           files: out/*
           body: |
-            Install Shadow Helper, open it, and paste the connection code from Shadow → Laptop panel. Requires Google Chrome.
+            Install Shadow and open it — Shadow opens in its own window. Sign in and press Link computer. Requires Google Chrome.
             Installed helpers update themselves to this version automatically when idle.
             If this build is not code-signed, Windows may show "Windows protected your PC" (More info → Run anyway) and on Mac right-click the app → Open the first time.

@@ -1,10 +1,10 @@
-"""Shadow Helper window (tkinter). Runs the helper's asyncio loop in a background thread."""
+"""Shadow desktop app: opens Shadow in its own window and runs its Chrome on this computer."""
 import asyncio
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from core import VERSION, Config, Helper, app_dir, copy_chrome_logins, open_app_window, pair
+from core import VERSION, Config, Helper, app_dir, copy_chrome_logins, new_link, open_app_window, pair
 from updater import Updater
 
 BG, FG, MUTED, ACCENT = "#0F111A", "#F1F5F9", "#94A3B8", "#00F0FF"
@@ -16,7 +16,7 @@ class App:
         self.cfg = Config()
         self.loop = asyncio.new_event_loop()
         self.helper = Helper(self.cfg, on_status=lambda s: root.after(0, self.status.set, s))
-        root.title(f"Shadow Helper {VERSION}")
+        root.title(f"Shadow {VERSION}")
         root.configure(bg=BG)
         root.geometry("520x620")
         self.status = tk.StringVar(value="Starting…")
@@ -25,8 +25,25 @@ class App:
                                before_install=self._before_install)
         self.build()
         threading.Thread(target=self._run_loop, daemon=True).start()
+        if root.tk.call("tk", "windowingsystem") == "aqua":
+            root.createcommand("::tk::mac::ReopenApplication", self.reopen)
         if self.cfg["open_app_on_start"]:
-            root.after(800, lambda: open_app_window(self.cfg))
+            root.iconify()
+            root.after(800, self.open_shadow)
+
+    def open_shadow(self):
+        def go():
+            if not self.cfg["token"] and not self.helper.link:
+                try:
+                    self.helper.link = new_link(self.cfg)
+                except Exception as e:
+                    self.root.after(0, self.status.set, f"Couldn't reach Shadow ({str(e)[:60]}) — check your internet")
+            open_app_window(self.cfg, self.helper.link)
+        threading.Thread(target=go, daemon=True).start()
+
+    def reopen(self):
+        self.root.deiconify()
+        self.root.lift()
 
     def _run_loop(self):
         asyncio.set_event_loop(self.loop)
@@ -46,11 +63,11 @@ class App:
 
     def build(self):
         pad = {"padx": 18, "sticky": "we"}
-        self.label(self.root, "Shadow Helper", 16, ACCENT, True).grid(row=0, pady=(16, 0), **pad)
-        self.label(self.root, "Runs Shadow's Chrome and the folders you pick on this computer.", 9, MUTED).grid(row=1, **pad)
+        self.label(self.root, "Shadow", 16, ACCENT, True).grid(row=0, pady=(16, 0), **pad)
+        self.label(self.root, "Shadow opens in its own window. This panel holds its settings for this computer.", 9, MUTED).grid(row=1, **pad)
         top = tk.Frame(self.root, bg=BG)
         top.grid(row=7, pady=(12, 0), **pad)
-        ttk.Button(top, text="Open Shadow", command=lambda: open_app_window(self.cfg)).pack(side="left")
+        ttk.Button(top, text="Open Shadow", command=self.open_shadow).pack(side="left")
         self.show_browser = tk.BooleanVar(value=bool(self.cfg["show_browser"]))
         tk.Checkbutton(top, text="Show Chrome windows while Shadow works", variable=self.show_browser, command=self.toggle_show,
                        bg=BG, fg=FG, selectcolor="#181B26", activebackground=BG, activeforeground=FG).pack(side="left", padx=8)
@@ -58,7 +75,7 @@ class App:
 
         link = tk.Frame(self.root, bg=BG)
         link.grid(row=3, **pad)
-        self.label(link, "1. Connection code (from Shadow → Laptop panel)", 10, FG, True).pack(fill="x")
+        self.label(link, "1. Account link (automatic when you sign in — or paste a code from Shadow → Laptop)", 10, FG, True).pack(fill="x")
         row = tk.Frame(link, bg=BG)
         row.pack(fill="x", pady=4)
         self.code = tk.Entry(row)
@@ -139,9 +156,9 @@ class App:
         try:
             res = pair(self.cfg, code)
             self.code.delete(0, "end")
-            messagebox.showinfo("Shadow Helper", f"Linked as \"{res['name']}\".")
+            messagebox.showinfo("Shadow", f"Linked as \"{res['name']}\".")
         except Exception as e:
-            messagebox.showerror("Shadow Helper", f"Could not link: {e}")
+            messagebox.showerror("Shadow", f"Could not link: {e}")
 
     def do_unlink(self):
         self.cfg["token"] = ""
@@ -167,9 +184,9 @@ class App:
             msg = f"Copied logins from Chrome profile \"{res['profile']}\"."
             if res["skipped"]:
                 msg += f"\n{len(res['skipped'])} files were in use (close Chrome and copy again to include them)."
-            messagebox.showinfo("Shadow Helper", msg)
+            messagebox.showinfo("Shadow", msg)
         except Exception as e:
-            messagebox.showerror("Shadow Helper", f"Could not copy logins: {e}")
+            messagebox.showerror("Shadow", f"Could not copy logins: {e}")
 
 
 def main():

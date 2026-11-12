@@ -8,6 +8,7 @@ import platform
 import shutil
 import sys
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -110,8 +111,10 @@ def decode_connection_code(code: str):
     return data["u"].rstrip("/"), data["c"]
 
 
-def pair(cfg: Config, connection_code: str):
-    url, code = decode_connection_code(connection_code)
+def pair(cfg: Config, connection_code: str = "", url: str = "", code: str = ""):
+    if connection_code:
+        url, code = decode_connection_code(connection_code)
+    url = url.rstrip("/")
     body = json.dumps({"code": code, "name": cfg["device_name"]}).encode()
     req = urllib.request.Request(url + "/api/helper/pair", data=body, method="POST",
                                  headers={"Content-Type": "application/json", "User-Agent": f"ShadowHelper/{VERSION}"})
@@ -242,16 +245,40 @@ def find_chrome():
     return shutil.which("google-chrome") or shutil.which("google-chrome-stable") or shutil.which("chromium")
 
 
-def open_app_window(cfg: Config):
+def _api(url, path, body=None):
+    req = urllib.request.Request(url + path, data=json.dumps(body).encode() if body is not None else None,
+                                 method="POST" if body is not None else "GET",
+                                 headers={"Content-Type": "application/json", "User-Agent": f"ShadowHelper/{VERSION}"})
+    return json.load(urllib.request.urlopen(req, timeout=30))
+
+
+def new_link(cfg: Config):
+    """Ask Shadow for a sign-in link request; the signed-in Shadow window approves it."""
+    url = (cfg["server_url"] or APP_URL).rstrip("/")
+    res = _api(url, "/api/helper/link", {"name": cfg["device_name"]})
+    return {"url": url, "id": res["id"], "secret": res["secret"]}
+
+
+def poll_link(cfg: Config, link):
+    res = _api(link["url"], f"/api/helper/link/{link['id']}/poll?secret={urllib.parse.quote(link['secret'])}")
+    if res.get("status") != "linked":
+        return None
+    cfg.data.update({"server_url": link["url"], "token": res["token"]})
+    cfg.save()
+    return res
+
+
+def open_app_window(cfg: Config, link=None):
     """Open Shadow's interface in its own app window (Chrome app mode, no tabs or address bar)."""
     import subprocess
     import webbrowser
     url = (cfg["server_url"] or APP_URL).rstrip("/")
+    page = f"{url}/?app=1" + (f"&link={link['id']}" if link and not cfg["token"] else "")
     exe = find_chrome()
     if not exe:
-        webbrowser.open(url + "/?app=1")
+        webbrowser.open(page)
         return
-    subprocess.Popen([exe, f"--app={url}/?app=1", f"--user-data-dir={app_dir() / 'app-window'}", "--no-first-run",
+    subprocess.Popen([exe, f"--app={page}", f"--user-data-dir={app_dir() / 'app-window'}", "--no-first-run",
                       "--no-default-browser-check", "--window-size=1440,920"], close_fds=True)
 
 
@@ -278,6 +305,7 @@ class Helper:
         self.stop_flag = False
         self.browser_lock = asyncio.Lock()
         self.last_work = time.time()
+        self.link = None
 
     def is_idle(self, secs):
         recording = bool(self.session and self.session.recording is not None)
@@ -341,7 +369,18 @@ class Helper:
         delay = 2
         while not self.stop_flag:
             if not self.cfg["token"]:
-                self.on_status("Not linked — paste a connection code")
+                self.on_status("Not linked yet — sign in in the Shadow window to link this computer")
+                if self.link:
+                    try:
+                        res = await asyncio.to_thread(poll_link, self.cfg, self.link)
+                        if res:
+                            self.link = None
+                            self.on_status(f"Linked as \"{res['name']}\" — connecting…")
+                            continue
+                    except Exception as e:
+                        log.warning("link poll: %s", e)
+                        if "404" in str(e):
+                            self.link = None
                 await asyncio.sleep(2)
                 continue
             url = self.cfg["server_url"].replace("https://", "wss://").replace("http://", "ws://") + "/api/helper/ws"
@@ -358,12 +397,12 @@ class Helper:
                         asyncio.ensure_future(self.handle(json.loads(raw)))
                     if ws.close_code == 4401:
                         self.cfg["token"] = ""
-                        self.on_status("This computer was unlinked — paste a new connection code")
+                        self.on_status("This computer was unlinked — press Open Shadow and sign in to link it again")
             except Exception as e:
                 code = getattr(getattr(e, "rcvd", None), "code", None)
                 if code == 4401:
                     self.cfg["token"] = ""
-                    self.on_status("This computer was unlinked — paste a new connection code")
+                    self.on_status("This computer was unlinked — press Open Shadow and sign in to link it again")
                 else:
                     self.on_status(f"Offline, retrying in {delay}s ({str(e)[:60]})")
             self.ws = None

@@ -52,6 +52,7 @@ INDEXES: dict = {
     "files": [IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="user_created")],
     "devices": [IndexModel([("token_hash", ASCENDING)], name="token_hash"), IndexModel([("user_id", ASCENDING)], name="user")],
     "pair_codes": [IndexModel([("code", ASCENDING)], name="code", unique=True)],
+    "helper_links": [IndexModel([("id", ASCENDING)], name="id", unique=True)],
     "user_settings": [IndexModel([("user_id", ASCENDING)], name="user", unique=True)],
     "workspaces": [IndexModel([("user_id", ASCENDING), ("target", ASCENDING)], name="user_target", unique=True)],
     "templates": [IndexModel([("user_id", ASCENDING), ("updated_at", DESCENDING)], name="user_updated")],
@@ -1195,15 +1196,60 @@ async def devices_revoke(did: str, uid: str = Depends(uid_of)):
 
 @api.post("/helper/pair")
 async def helper_pair(body: PairIn):
-    import secrets
     pc = await db.pair_codes.find_one_and_delete({"code": body.code.strip().upper()})
     if not pc or pc["expires_at"] < sb.now_iso():
         raise HTTPException(400, "This connection code is wrong or expired. Get a new one in Shadow.")
+    return await _new_device(pc["user_id"], body.name)
+
+
+class LinkNewIn(BaseModel):
+    name: Optional[str] = "My computer"
+
+
+async def _new_device(uid, name):
+    import secrets
     token = secrets.token_urlsafe(32)
-    dev = {"id": str(uuid.uuid4()), "user_id": pc["user_id"], "name": (body.name or "My laptop")[:60],
+    dev = {"id": str(uuid.uuid4()), "user_id": uid, "name": (name or "My laptop")[:60],
            "token_hash": hub.hash_token(token), "created_at": sb.now_iso(), "last_seen": sb.now_iso()}
     await db.devices.insert_one(dev)
     return {"token": token, "device_id": dev["id"], "name": dev["name"]}
+
+
+@api.post("/helper/link")
+async def helper_link_new(body: LinkNewIn):
+    import secrets
+    lid, secret = secrets.token_urlsafe(12), secrets.token_urlsafe(24)
+    exp = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
+    await db.helper_links.insert_one({"id": lid, "secret_hash": hub.hash_token(secret), "name": (body.name or "My computer")[:60],
+                                      "user_id": None, "expires_at": exp})
+    return {"id": lid, "secret": secret, "expires_at": exp}
+
+
+@api.get("/helper/link/{lid}/poll")
+async def helper_link_poll(lid: str, secret: str):
+    doc = await db.helper_links.find_one({"id": lid, "secret_hash": hub.hash_token(secret)}, {"_id": 0})
+    if not doc or doc["expires_at"] < sb.now_iso():
+        raise HTTPException(404, "Link request expired")
+    if not doc.get("user_id"):
+        return {"status": "waiting"}
+    await db.helper_links.delete_one({"id": lid})
+    return {"status": "linked", **await _new_device(doc["user_id"], doc["name"])}
+
+
+@api.get("/helper/link/{lid}")
+async def helper_link_get(lid: str, uid: str = Depends(uid_of)):
+    doc = await db.helper_links.find_one({"id": lid}, {"_id": 0, "secret_hash": 0})
+    if not doc or doc["expires_at"] < sb.now_iso() or (doc.get("user_id") and doc["user_id"] != uid):
+        raise HTTPException(404, "This link request expired. Reopen the Shadow app.")
+    return {"id": lid, "name": doc["name"], "approved": bool(doc.get("user_id"))}
+
+
+@api.post("/helper/link/{lid}/approve")
+async def helper_link_approve(lid: str, uid: str = Depends(uid_of)):
+    r = await db.helper_links.update_one({"id": lid, "user_id": None, "expires_at": {"$gt": sb.now_iso()}}, {"$set": {"user_id": uid}})
+    if not r.matched_count:
+        raise HTTPException(404, "This link request expired. Reopen the Shadow app.")
+    return {"ok": True}
 
 
 @app.websocket("/api/browser/stream")

@@ -13,6 +13,7 @@ import ApprovalDialog from "@/components/shadow/ApprovalDialog";
 import SkillReviewDialog from "@/components/shadow/SkillReviewDialog";
 import UpdateBanner from "@/components/shadow/UpdateBanner";
 import HomeScreen from "@/components/shadow/HomeScreen";
+import DesktopLinkDialog from "@/components/shadow/DesktopLinkDialog";
 import { ArrowLeft } from "lucide-react";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 
@@ -209,6 +210,7 @@ export default function Workspace() {
           onTemplateOpened: async (g, r) => { if (r) lastRunByGroup.current[g.id] = r.id; await loadGroups(); switchGroup(g.id); bump(); } }} />
       <WorkspaceDialog open={!!wsDialog} workspace={wsDialog?.id ? wsDialog : null} onClose={() => setWsDialog(null)} onSave={saveWorkspace} />
       <ApprovalDialog run={run} onDecide={(decision) => runAction("approval", { decision })} />
+      <DesktopLinkDialog onLinked={loadTarget} />
     </>
   );
 
@@ -256,6 +258,7 @@ export default function Workspace() {
       </ResizablePanelGroup>
       <WorkspaceDialog open={!!wsDialog} workspace={wsDialog?.id ? wsDialog : null} onClose={() => setWsDialog(null)} onSave={saveWorkspace} />
       <ApprovalDialog run={run} onDecide={(decision) => runAction("approval", { decision })} />
+      <DesktopLinkDialog onLinked={loadTarget} />
       <SkillReviewDialog events={recorded} onClose={() => setRecorded(null)} onSaved={() => { setRecorded(null); setPanel("skills"); bump(); }} />
     </div>
   );
