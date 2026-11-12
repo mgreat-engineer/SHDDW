@@ -87,3 +87,9 @@ android-sdk/
 shadow_data/
 frontend/node_modules/.cache/default-development/0.pack
 frontend/node_modules/.cache/default-development/8.pack
+.env
+.env.*
+*.env
+credentials.json
+*.key
+.credentials
